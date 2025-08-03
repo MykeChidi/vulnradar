@@ -245,6 +245,11 @@ Contributions are welcome! Areas for improvement:
 - Always obtain proper authorization before scanning
 - Review and understand payloads before deployment
 
-## Disclaimer
+## Legal Disclaimer
 
-This scanner is provided for educational and authorized testing purposes only. The author(s) is/are not responsible for any misuse or damage caused by this tool. Always ensure you have proper authorization before scanning any systems.
+This tool is intended for authorized security testing only. Users must:
+- Obtain proper written authorization before scanning any systems
+- Comply with all applicable laws and regulations
+- Use responsibly and ethically
+
+The authors assume no liability for misuse of this software.

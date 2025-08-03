@@ -252,4 +252,4 @@ This tool is intended for authorized security testing only. Users must:
 - Comply with all applicable laws and regulations
 - Use responsibly and ethically
 
-The authors assume no liability for misuse of this software.
+The author(s) assume no liability for misuse of this software.

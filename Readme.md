@@ -237,6 +237,7 @@ Contributions are welcome! Areas for improvement:
 - Performance optimizations
 - False positive reduction
 - New reconnaissance techniques
+- Improved scanning techniques
 
 ## Security Considerations
 
@@ -247,9 +248,7 @@ Contributions are welcome! Areas for improvement:
 
 ## Legal Disclaimer
 
-This tool is intended for authorized security testing only. Users must:
+This tool is intended for authorized security testing only. Users are required to:
 - Obtain proper written authorization before scanning any systems
 - Comply with all applicable laws and regulations
 - Use responsibly and ethically
-
-The author(s) assume no liability for misuse of this software.

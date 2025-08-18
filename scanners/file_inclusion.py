@@ -40,15 +40,18 @@ class FileInclusionScanner(BaseScanner):
             List[Dict]: List of vulnerability findings
         """
         vulnerabilities = []
+        try:
+            # Test URL parameters
+            url_vulns = await self._test_url_parameters(url)
+            vulnerabilities.extend(url_vulns)
+            
+            # Test form inputs
+            form_vulns = await self._test_form_inputs(url)
+            vulnerabilities.extend(form_vulns)
         
-        # Test URL parameters
-        url_vulns = await self._test_url_parameters(url)
-        vulnerabilities.extend(url_vulns)
-        
-        # Test form inputs
-        form_vulns = await self._test_form_inputs(url)
-        vulnerabilities.extend(form_vulns)
-        
+        except Exception as e:
+            print(f"Error scanning '{url}' for file inclusion: {e}")
+            
         return vulnerabilities
     
     async def _test_url_parameters(self, url: str) -> List[Dict]:

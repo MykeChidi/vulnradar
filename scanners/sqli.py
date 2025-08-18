@@ -32,19 +32,22 @@ class SQLInjectionScanner(BaseScanner):
             List[Dict]: List of SQL injection findings
         """
         vulnerabilities = []
-        
-        # Check GET parameters
-        params = await self._extract_parameters(url)
-        if params:
-            get_vulns = await self._check_get_params(url, params)
-            vulnerabilities.extend(get_vulns)
-            
-        # Check POST parameters in forms
-        forms = await self._get_form_inputs(url)
-        for form in forms:
-            post_vulns = await self._check_post_params(form)
-            vulnerabilities.extend(post_vulns)
-            
+        try:
+            # Check GET parameters
+            params = await self._extract_parameters(url)
+            if params:
+                get_vulns = await self._check_get_params(url, params)
+                vulnerabilities.extend(get_vulns)
+                
+            # Check POST parameters in forms
+            forms = await self._get_form_inputs(url)
+            for form in forms:
+                post_vulns = await self._check_post_params(form)
+                vulnerabilities.extend(post_vulns)
+                
+        except Exception as e:
+            print(f"Error scanning '{url}' for sqli: {e}")
+
         return vulnerabilities
         
     async def _check_get_params(self, url: str, params: Dict[str, str]) -> List[Dict]:
@@ -283,5 +286,5 @@ class SQLInjectionScanner(BaseScanner):
             return False
             
         except Exception as e:
-            print(f"Error validating SQL injection at {url}: {e}")
+            print(f"Error validating SQL injection at '{url}': {e}")
             return False

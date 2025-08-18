@@ -53,7 +53,7 @@ class SSRFScanner(BaseScanner):
                 vulnerabilities.extend(ssrf_findings)
                 
         except Exception as e:
-            print(f"Error scanning {url} for SSRF: {e}")
+            print(f"Error scanning '{url}' for SSRF: {e}")
             
         return vulnerabilities
     

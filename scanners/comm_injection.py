@@ -57,7 +57,7 @@ class CommandInjectionScanner(BaseScanner):
             vulnerabilities.extend(json_vulns)
             
         except Exception as e:
-            print(f"Error scanning {url} for command injection: {e}")
+            print(f"Error scanning '{url}' for command injection: {e}")
             
         return vulnerabilities
 

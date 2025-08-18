@@ -49,7 +49,7 @@ class CSRFScanner(BaseScanner):
                 vulnerabilities.extend(csrf_findings)
                 
         except Exception as e:
-            print(f"Error scanning {url} for CSRF: {e}")
+            print(f"Error scanning '{url}' for CSRF: {e}")
             
         return vulnerabilities
     
@@ -323,6 +323,6 @@ class CSRFScanner(BaseScanner):
                                 return response.status in [200, 201, 302, 303]
                                 
         except Exception as e:
-            print(f"Error validating CSRF vulnerability: {e}")
+            print(f"Error validating CSRF vulnerability in '{url}': {e}")
             
         return False

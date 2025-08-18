@@ -1,8 +1,10 @@
 # vulnscan/scanners/xss.py - Cross-Site Scripting Scanner
 
-from typing import Dict, List
-
+from typing import Dict, List, Optional
+import html
+import re
 import aiohttp
+from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse, quote
 from bs4 import BeautifulSoup
 from scanners.base import BaseScanner
 from scanners import payloads
@@ -29,19 +31,26 @@ class XSSScanner(BaseScanner):
             List[Dict]: List of XSS findings
         """
         vulnerabilities = []
-        
-        # Check GET parameters
-        params = await self._extract_parameters(url)
-        if params:
-            get_vulns = await self._check_get_params(url, params)
-            vulnerabilities.extend(get_vulns)
+        try:
+            # Check GET parameters
+            params = await self._extract_parameters(url)
+            if params:
+                get_vulns = await self._check_get_params(url, params)
+                vulnerabilities.extend(get_vulns)
+                
+            # Check POST parameters in forms
+            forms = await self._get_form_inputs(url)
+            for form in forms:
+                post_vulns = await self._check_post_params(form)
+                vulnerabilities.extend(post_vulns)
             
-        # Check POST parameters in forms
-        forms = await self._get_form_inputs(url)
-        for form in forms:
-            post_vulns = await self._check_post_params(form)
-            vulnerabilities.extend(post_vulns)
-            
+            # Check for DOM-based XSS
+            dom_vulns = await self._check_dom_xss(url)
+            vulnerabilities.extend(dom_vulns)
+
+        except Exception as e:
+            print(f"Error scanning '{url}' for XSS: {e}")
+
         return vulnerabilities
         
     async def _check_get_params(self, url: str, params: Dict[str, str]) -> List[Dict]:
@@ -55,8 +64,6 @@ class XSSScanner(BaseScanner):
         Returns:
             List[Dict]: List of XSS findings
         """
-        from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
-        
         vulnerabilities = []
         parsed_url = urlparse(url)
         
@@ -191,12 +198,81 @@ class XSSScanner(BaseScanner):
         Returns:
             bool: True if the payload is reflected, False otherwise
         """
-        # Use a more robust method to check for XSS reflection
+        # Check for direct payload reflection
+        if payload in response_text:
+            return True
+        
+        # Check for HTML-encoded payload reflection
+        import html
+        encoded_payload = html.escape(payload)
+        if encoded_payload in response_text:
+            return True
+        
+        # Check for URL-encoded payload reflection
+        url_encoded_payload = quote(payload)
+        if url_encoded_payload in response_text:
+            return True
+        
+        # Check for partial payload reflection (for bypasses)
+        # Extract key parts of the payload
+        key_parts = self._extract_payload_parts(payload)
+        reflection_count = sum(1 for part in key_parts if part in response_text)
+        
+        # If most key parts are reflected, consider it a potential XSS
+        if len(key_parts) > 0 and reflection_count / len(key_parts) >= 0.7:
+            return True
+        
+        # Check for script execution context
         soup = BeautifulSoup(response_text, 'html.parser')
-        for script in soup.find_all('script'):
-            if payload in script.text:
-                return True
+        
+        # Check if payload appears in dangerous contexts
+        dangerous_contexts = [
+            'script', 'style', 'svg', 'iframe', 'object', 'embed'
+        ]
+        
+        for context in dangerous_contexts:
+            for element in soup.find_all(context):
+                if payload in str(element):
+                    return True
+        
+        # Check for payload in event handlers
+        for element in soup.find_all():
+            for attr_name, attr_value in element.attrs.items():
+                if attr_name.startswith('on') and payload in str(attr_value):
+                    return True
+        
         return False
+
+    def _extract_payload_parts(self, payload: str) -> List[str]:
+        """
+        Extract key parts from an XSS payload for partial reflection detection.
+        
+        Args:
+            payload: XSS payload to analyze
+            
+        Returns:
+            List[str]: List of key parts from the payload
+        """
+        key_parts = []
+        
+        # Extract tag names
+        tag_matches = re.findall(r'<(\w+)', payload)
+        key_parts.extend(tag_matches)
+        
+        # Extract function calls
+        function_matches = re.findall(r'(\w+)\s*\(', payload)
+        key_parts.extend(function_matches)
+        
+        # Extract attribute names
+        attr_matches = re.findall(r'(\w+)=', payload)
+        key_parts.extend(attr_matches)
+        
+        # Extract quoted strings
+        string_matches = re.findall(r'["\']([^"\']+)["\']', payload)
+        key_parts.extend(string_matches)
+        
+        return list(set(key_parts))  # Remove duplicates
+
         
     def _extract_reflection_snippet(self, response_text: str, payload: str) -> str:
         """
@@ -209,12 +285,205 @@ class XSSScanner(BaseScanner):
         Returns:
             str: Snippet of the response text that reflects the payload
         """
-        # Use a more robust method to extract a snippet of the response text
+        # Find the payload in the response
+        payload_index = response_text.find(payload)
+        
+        if payload_index != -1:
+            # Extract context around the payload
+            start_index = max(0, payload_index - 50)
+            end_index = min(len(response_text), payload_index + len(payload) + 50)
+            snippet = response_text[start_index:end_index]
+            
+            # Add markers to highlight the payload
+            snippet = snippet.replace(payload, f">>>{payload}<<<")
+            return snippet
+        
+        # If direct payload not found, check for HTML-encoded version
+        encoded_payload = html.escape(payload)
+        encoded_index = response_text.find(encoded_payload)
+        
+        if encoded_index != -1:
+            start_index = max(0, encoded_index - 50)
+            end_index = min(len(response_text), encoded_index + len(encoded_payload) + 50)
+            snippet = response_text[start_index:end_index]
+            snippet = snippet.replace(encoded_payload, f">>>{encoded_payload}<<<")
+            return snippet
+        
+        # If still not found, look for partial matches
         soup = BeautifulSoup(response_text, 'html.parser')
+        
+        # Check in script tags
         for script in soup.find_all('script'):
             if payload in script.text:
-                return script.text[:100]  # Return the first 100 characters of the script text
-        return ""                      
+                return f"Script content: {script.text[:100]}..."
+        
+        # Check in dangerous contexts
+        dangerous_contexts = ['style', 'svg', 'iframe', 'object', 'embed']
+        for context in dangerous_contexts:
+            for element in soup.find_all(context):
+                if payload in str(element):
+                    return f"{context.upper()} element: {str(element)[:100]}..."
+        
+        # Check in event handlers
+        for element in soup.find_all():
+            for attr_name, attr_value in element.attrs.items():
+                if attr_name.startswith('on') and payload in str(attr_value):
+                    return f"Event handler {attr_name}: {attr_value}"
+        
+        return "Payload reflection detected but context unclear"
+
+                     
+    def _extract_param_from_evidence(self, evidence: str) -> Optional[str]:
+        """
+        Extract parameter name from evidence string.
+        
+        Args:
+            evidence: Evidence string containing the reflected payload
+            
+        Returns:
+            Optional[str]: Parameter name if found, None otherwise
+        """
+        # Try to extract parameter name from common patterns
+        
+        # Look for common parameter patterns
+        param_patterns = [
+            r'name="([^"]+)"',
+            r'parameter[:\s]+([^\s,]+)',
+            r'param[:\s]+([^\s,]+)',
+            r'field[:\s]+([^\s,]+)'
+        ]
+        
+        for pattern in param_patterns:
+            match = re.search(pattern, evidence, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        
+        return None
+    
+    async def _check_dom_xss(self, url: str) -> List[Dict]:
+        """
+        Check for DOM-based XSS vulnerabilities.
+        
+        Args:
+            url: URL to check for DOM XSS
+            
+        Returns:
+            List[Dict]: List of DOM XSS findings
+        """
+        vulnerabilities = []
+        
+        # DOM XSS payloads that work with common JavaScript patterns
+        dom_payloads = [
+            "#<script>alert('DOM-XSS')</script>",
+            "#<img src=x onerror=alert('DOM-XSS')>",
+            "#javascript:alert('DOM-XSS')",
+            "#'><script>alert('DOM-XSS')</script>",
+            "#\"><script>alert('DOM-XSS')</script>",
+        ]
+        
+        for payload in dom_payloads:
+            test_url = url + payload
+            
+            try:
+                async with aiohttp.ClientSession(headers=self.headers) as session:
+                    async with session.get(test_url, timeout=self.timeout) as response:
+                        response_text = await response.text()
+                        
+                        # Check for DOM XSS indicators
+                        if self._check_dom_xss_indicators(response_text, payload):
+                            vulnerabilities.append({
+                                "type": "DOM XSS",
+                                "endpoint": url,
+                                "parameter": "URL Fragment",
+                                "method": "GET",
+                                "payload": payload,
+                                "evidence": self._extract_dom_xss_evidence(response_text, payload),
+                                "severity": "High",
+                                "description": "DOM-based Cross-Site Scripting vulnerability found",
+                                "remediation": "Avoid using dangerous DOM methods with user input. Validate and sanitize all user input before using in DOM operations."
+                            })
+                            
+            except Exception as e:
+                print(f"Error testing DOM XSS on {url}: {e}")
+        
+        return vulnerabilities
+
+    def _check_dom_xss_indicators(self, response_text: str, payload: str) -> bool:
+        """
+        Check for DOM XSS indicators in the response.
+        
+        Args:
+            response_text: Response text from the server
+            payload: Payload to check for
+            
+        Returns:
+            bool: True if DOM XSS indicators are found, False otherwise
+        """
+        # Look for dangerous JavaScript patterns that could lead to DOM XSS
+        dangerous_patterns = [
+            r'document\.write\s*\(',
+            r'document\.writeln\s*\(',
+            r'innerHTML\s*=',
+            r'outerHTML\s*=',
+            r'location\.href\s*=',
+            r'location\.hash',
+            r'location\.search',
+            r'window\.location',
+            r'eval\s*\(',
+            r'setTimeout\s*\(',
+            r'setInterval\s*\('
+        ]
+        
+        import re
+        
+        for pattern in dangerous_patterns:
+            if re.search(pattern, response_text, re.IGNORECASE):
+                # Check if the payload characters appear near these patterns
+                matches = re.finditer(pattern, response_text, re.IGNORECASE)
+                for match in matches:
+                    start_pos = max(0, match.start() - 100)
+                    end_pos = min(len(response_text), match.end() + 100)
+                    context = response_text[start_pos:end_pos]
+                    
+                    # Check if payload elements appear in the context
+                    if any(char in context for char in ['<', '>', '"', "'", '(', ')']):
+                        return True
+        
+        return False
+
+    def _extract_dom_xss_evidence(self, response_text: str, payload: str) -> str:
+        """
+        Extract evidence of DOM XSS from the response.
+        
+        Args:
+            response_text: Response text from the server
+            payload: Payload that was tested
+            
+        Returns:
+            str: Evidence string showing the DOM XSS context
+        """
+        # Look for script tags that might contain vulnerable patterns
+        soup = BeautifulSoup(response_text, 'html.parser')
+        
+        for script in soup.find_all('script'):
+            script_content = script.text
+            
+            # Check for dangerous patterns in script content
+            dangerous_patterns = [
+                'document.write', 'innerHTML', 'location.href', 'location.hash',
+                'eval(', 'setTimeout(', 'setInterval('
+            ]
+            
+            for pattern in dangerous_patterns:
+                if pattern in script_content:
+                    # Extract relevant portion
+                    pattern_index = script_content.find(pattern)
+                    start_index = max(0, pattern_index - 30)
+                    end_index = min(len(script_content), pattern_index + len(pattern) + 30)
+                    evidence = script_content[start_index:end_index]
+                    return f"Dangerous pattern found: {evidence}"
+        
+        return "DOM XSS indicators detected in JavaScript code"
 
     async def validate(self, url: str, payload: str, evidence: str) -> bool:
         """
@@ -233,8 +502,6 @@ class XSSScanner(BaseScanner):
             param_name = self._extract_param_from_evidence(evidence) or "test"
             
             # Test with the specific payload
-            from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
-            
             parsed_url = urlparse(url)
             
             # Test GET parameters
@@ -275,5 +542,5 @@ class XSSScanner(BaseScanner):
             return False
             
         except Exception as e:
-            print(f"Error validating XSS vulnerability: {e}")
+            print(f"Error validating XSS vulnerability at '{url}': {e}")
             return False

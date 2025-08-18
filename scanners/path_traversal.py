@@ -36,18 +36,21 @@ class PathTraversalScanner(BaseScanner):
             List[Dict]: List of vulnerability findings
         """
         vulnerabilities = []
+        try:
+            # Test URL parameters
+            url_vulns = await self._test_url_parameters(url)
+            vulnerabilities.extend(url_vulns)
+            
+            # Test form inputs
+            form_vulns = await self._test_form_inputs(url)
+            vulnerabilities.extend(form_vulns)
+            
+            # Test common file access patterns
+            file_vulns = await self._test_file_access(url)
+            vulnerabilities.extend(file_vulns)
         
-        # Test URL parameters
-        url_vulns = await self._test_url_parameters(url)
-        vulnerabilities.extend(url_vulns)
-        
-        # Test form inputs
-        form_vulns = await self._test_form_inputs(url)
-        vulnerabilities.extend(form_vulns)
-        
-        # Test common file access patterns
-        file_vulns = await self._test_file_access(url)
-        vulnerabilities.extend(file_vulns)
+        except Exception as e:
+            print(f"Error scanning {url} for path traversal: {e}")
         
         return vulnerabilities
     

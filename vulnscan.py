@@ -6,6 +6,7 @@ import asyncio
 import time
 from pathlib import Path
 from typing import Dict, List
+import sys
 
 import aiohttp
 import colorama
@@ -458,7 +459,7 @@ def parse_arguments():
     )
     
     # Target options
-    parser.add_argument("url", help="Target URL to scan")
+    parser.add_argument("url", nargs='?', help="Target URL to scan")
     parser.add_argument("--cookies", help="Cookies to include with HTTP requests")
     parser.add_argument("--user-agent", default="VulnScan/1.0", help="User-Agent string")
     
@@ -489,14 +490,86 @@ def parse_arguments():
     parser.add_argument("--use-db", action="store_true", help="Store results in SQLite database")
     parser.add_argument("--db-path", default="vulnscan.db", help="Path to SQLite database")
     
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    if args.url is None:
+        show_usage_examples()
+        sys.exit(0)
+
+    return args 
+
+
+def show_usage_examples():
+    """Display usage examples when no arguments are provided."""
+    print(f"""
+            {Fore.CYAN}╔═══════════════════════════════════════════════════════════════════════╗
+            ║                           VULNSCAN                                    ║
+            ╚═══════════════════════════════════════════════════════════════════════╝{Style.RESET_ALL}
+
+            {Fore.YELLOW}USAGE:{Style.RESET_ALL}
+                python vulnscan.py <URL> [OPTIONS]
+
+            {Fore.YELLOW}BASIC EXAMPLES:{Style.RESET_ALL}
+
+            {Fore.GREEN}Quick Scan:{Style.RESET_ALL}
+                python vulnscan.py https://example.com
+
+            {Fore.GREEN}Basic Authenticated Scan:{Style.RESET_ALL}
+                python vulnscan.py https://app.example.com --cookies "session=abc123"
+
+            {Fore.GREEN}Comprehensive Security Assessment:{Style.RESET_ALL}
+                python vulnscan.py https://example.com \\
+                    --crawl-depth 4 \\
+                    --port-scan \\
+                    --use-selenium \\
+                    --timeout 20 \\
+                    --max-workers 8 \\
+                    --use-db \\
+                    --excel
+
+            {Fore.YELLOW}PERFORMANCE TUNING:{Style.RESET_ALL}
+
+            {Fore.GREEN}For Slow Sites:{Style.RESET_ALL}
+                python vulnscan.py https://slow-site.com --timeout 30 --max-workers 2
+
+            {Fore.GREEN}For Fast Sites:{Style.RESET_ALL}
+                python vulnscan.py https://fast-site.com --timeout 5 --max-workers 15
+
+            {Fore.YELLOW}TARGETED SCANNING:{Style.RESET_ALL}
+
+            {Fore.GREEN}SQL Injection and XSS Only:{Style.RESET_ALL}
+                python vulnscan.py https://example.com \\
+                    --no-csrf --no-ssrf --no-path-traversal \\
+                    --no-file-inclusion --no-command-injection
+
+            {Fore.GREEN}Skip Vulnerability Scanning (Recon Only):{Style.RESET_ALL}
+                python vulnscan.py https://example.com \\
+                    --no-sqli --no-xss --no-csrf --no-ssrf \\
+                    --no-path-traversal --no-file-inclusion --no-command-injection
+
+            {Fore.YELLOW}ADVANCED OPTIONS:{Style.RESET_ALL}
+
+            {Fore.GREEN}Custom Output Directory:{Style.RESET_ALL}
+                python vulnscan.py https://example.com --output-dir ./my_scan_results
+
+            {Fore.GREEN}Different Report Formats:{Style.RESET_ALL}
+                python vulnscan.py https://example.com --no-pdf --excel --no-html
+
+            {Fore.GREEN}Database Storage:{Style.RESET_ALL}
+                python vulnscan.py https://example.com --use-db --db-path ./my_scans.db
+
+            {Fore.YELLOW}HELP:{Style.RESET_ALL}
+                python vulnscan.py --help      # Show all available options
+
+            {Fore.CYAN}For detailed documentation, visit: https://github.com/MykeChidi/Vulnscan{Style.RESET_ALL}
+            """)
 
 
 async def main():
     """Main Vulnscan function."""
     # Parse arguments
     args = parse_arguments()
-    
+
     # Convert arguments to options dictionary
     options = {
         "user_agent": args.user_agent,

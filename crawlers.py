@@ -15,7 +15,7 @@ class WebCrawler:
     """Crawler for discovering endpoints on a website."""
     
     def __init__(self, base_url: str, headers: Dict = None, max_depth: int = 3, 
-                 timeout: int = 10, use_selenium: bool = False):
+                 timeout: int = 10, use_selenium: bool = False, max_pages: int = 1000):
         """
         Initialize the web crawler.
         
@@ -25,12 +25,15 @@ class WebCrawler:
             max_depth: Maximum crawl depth
             timeout: Request timeout in seconds
             use_selenium: Whether to use Selenium for JavaScript rendering
+            max_pages: Maximum number of pages to crawl
         """
         self.base_url = base_url
         self.headers = headers or {}
         self.max_depth = max_depth
         self.timeout = timeout
         self.use_selenium = use_selenium
+        self.max_pages = max_pages
+        self.page_count = 0
         self.visited_urls = set()
         self.to_visit = [(base_url, 0)]  # (url, depth)
         self.base_domain = urlparse(base_url).netloc
@@ -62,15 +65,20 @@ class WebCrawler:
         session_timeout = aiohttp.ClientTimeout(total=self.timeout)
         
         async with aiohttp.ClientSession(headers=self.headers, timeout=session_timeout) as session:
-            while self.to_visit:
+            while self.to_visit and self.page_count < self.max_pages:
                 url, depth = self.to_visit.pop(0)
                 
                 # Skip if we've already visited this URL or if it's beyond max depth
                 if url in self.visited_urls or depth > self.max_depth:
                     continue
-                    
-                self.visited_urls.add(url)
                 
+                # Check if maximum pages has been reached
+                if self.page_count >= self.max_pages:
+                    break
+
+                self.visited_urls.add(url)
+                self.page_count += 1
+
                 try:
                     # Fetch the page
                     status_code = 0
@@ -104,7 +112,9 @@ class WebCrawler:
                     print(f"Error crawling {url}: {e}")
                 except Exception as e:
                     print(f"Unexpected error crawling {url}: {e}")
-    
+                    
+            print(f"Crawling finished. Total pages visited: {self.page_count}")
+
     def _extract_links(self, base_url: str, html_content: str) -> List[str]:
         """
         Extract links from HTML content.

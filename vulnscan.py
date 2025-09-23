@@ -208,9 +208,15 @@ class VulnerabilityScanner:
         try:
             waf_detector = WAFW00F()
             waf_results = waf_detector.identwaf(self.target_url)
-            self.results["reconnaissance"]["waf"] = waf_results
-            if waf_results.get("detected"):
-                logger.info(f"WAF detected: {waf_results.get('name', 'Unknown')}")
+            # WAFW00F returns a tuple of (name, manufacturer), convert to dict
+            waf_info = {
+                "detected": bool(waf_results[0]),  # If name is present, WAF is detected
+                "name": waf_results[0] or "None",
+                "manufacturer": waf_results[1] or "Unknown"
+            }
+            self.results["reconnaissance"]["waf"] = waf_info
+            if waf_info["detected"]:
+                logger.info(f"WAF detected: {waf_info['name']} (by {waf_info['manufacturer']})")
             else:
                 logger.info("No WAF detected")
         except Exception as e:

@@ -115,6 +115,42 @@ class WebCrawler:
                     
             print(f"Crawling finished. Total pages visited: {self.page_count}")
 
+    def prioritize_endpoints(self, endpoints: List[str]) -> List[str]:
+        """
+        Prioritize endpoints by likelihood of vulnerabilities.
+        
+        Args:
+            endpoints: List of all discovered endpoints
+            
+        Returns:
+            Sorted list with high-priority endpoints first
+        """
+        def score_endpoint(url: str) -> int:
+            score = 0
+            url_lower = url.lower()
+            
+            # High priority - likely to have parameters
+            if '?' in url:
+                score += 10
+            if any(x in url_lower for x in ['search', 'query', 'id=', 'user=', 'file=']):
+                score += 8
+            if any(x in url_lower for x in ['admin', 'api', 'upload', 'download']):
+                score += 7
+            if any(x in url_lower for x in ['login', 'auth', 'register']):
+                score += 5
+                
+            # Medium priority
+            if url.endswith('.php') or url.endswith('.asp') or url.endswith('.jsp'):
+                score += 3
+                
+            # Low priority - static content
+            if any(url_lower.endswith(ext) for ext in ['.jpg', '.png', '.css', '.js', '.gif', '.svg']):
+                score -= 5
+                
+            return score
+        
+        return sorted(endpoints, key=score_endpoint, reverse=True)
+
     def _extract_links(self, base_url: str, html_content: str) -> List[str]:
         """
         Extract links from HTML content.

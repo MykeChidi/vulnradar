@@ -41,27 +41,6 @@ class BaseScanner(abc.ABC):
         Returns:
             List[Dict]: List of vulnerability findings
         """
-        self.logger.info(f"Starting scan of {url}")
-        try:
-            results = await self._scan_implementation(url)
-            self.logger.info(f"Scan completed. Found {len(results)} potential vulnerabilities")
-            return results
-        except Exception as e:
-            self.logger.error(f"Error during scan: {str(e)}")
-            raise
-    
-    @abc.abstractmethod
-    async def _scan_implementation(self, url: str) -> List[Dict]:
-        """
-        Implementation of the actual scanning logic.
-        To be implemented by each scanner class.
-        
-        Args:
-            url: URL to scan
-            
-        Returns:
-            List[Dict]: List of vulnerability findings
-        """
         pass
         
     @abc.abstractmethod

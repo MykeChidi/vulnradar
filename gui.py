@@ -580,17 +580,35 @@ class VulnScanGUI:
         cache_card = self.create_card(self.settings_tab, "🗂️ Cache Options", 2, 0)
         cache_inner = tk.Frame(cache_card, bg=self.colors['secondary_bg'])
         cache_inner.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
-        
+        cache_ttl_frame = tk.Frame(cache_inner, bg=self.colors['secondary_bg'])
+        cache_ttl_frame.pack(fill=tk.X, pady=3)
+        cache_dir_frame = tk.Frame(cache_inner, bg=self.colors['secondary_bg'])
+        cache_dir_frame.pack(fill=tk.X, pady=3)
+
         self.no_cache_var = tk.BooleanVar(value=False)
         self.clear_cache_var = tk.BooleanVar(value=False)
+        self.cache_ttl_var = tk.StringVar(value=3600)
+        self.cache_dir_var = tk.StringVar(value="cache")
+
+        tk.Label(cache_dir_frame, text="Cache Path:", bg=self.colors['secondary_bg'],
+                fg=self.colors['text'], font=('Segoe UI', 9)).pack(side=tk.LEFT, padx=(0, 10))
+        tk.Entry(cache_dir_frame, textvariable=self.cache_dir_var,
+                bg=self.colors['bg'], fg=self.colors['text'],
+                insertbackground=self.colors['text'], relief='flat').pack(side=tk.LEFT, fill=tk.X)
+        
+        tk.Label(cache_ttl_frame, text="Cache time-to-live (secs):", bg=self.colors['secondary_bg'],
+                fg=self.colors['text'], font=('Segoe UI', 9)).pack(side=tk.LEFT, padx=(0, 10))
+        tk.Entry(cache_ttl_frame, textvariable=self.cache_ttl_var,
+                bg=self.colors['bg'], fg=self.colors['text'],
+                insertbackground=self.colors['text'], relief='flat').pack(side=tk.LEFT, fill=tk.X)
         
         tk.Checkbutton(cache_inner, text="Disable Cache", variable=self.no_cache_var,
                       bg=self.colors['secondary_bg'], fg=self.colors['text'],
-                      selectcolor=self.colors['bg'], font=('Segoe UI', 9)).pack(anchor=tk.W, pady=5)
+                      selectcolor=self.colors['bg'], font=('Segoe UI', 9)).pack(anchor=tk.W, pady=3)
         
         tk.Checkbutton(cache_inner, text="Clear Cache Before Scan", variable=self.clear_cache_var,
                       bg=self.colors['secondary_bg'], fg=self.colors['text'],
-                      selectcolor=self.colors['bg'], font=('Segoe UI', 9)).pack(anchor=tk.W, pady=5)
+                      selectcolor=self.colors['bg'], font=('Segoe UI', 9)).pack(anchor=tk.W, pady=3)
         
     def setup_logs_tab(self):
         """Setup logs tab"""
@@ -753,6 +771,8 @@ class VulnScanGUI:
             "pdf_report": self.output_vars['pdf'].get(),
             "json_report": self.output_vars['json'].get(),
             "excel_report": self.output_vars['excel'].get(),
+            "cache": self.cache_dir_var.get(),
+            "cache_ttl": int(self.cache_ttl_var.get()),
             "no_cache": self.no_cache_var.get(),
             "clear_cache": self.clear_cache_var.get(),
         }

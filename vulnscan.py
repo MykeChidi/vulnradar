@@ -123,87 +123,8 @@ class VulnerabilityScanner:
         # If advanced recon only mode is enabled, skip vulnerability scanning
         if self.options.get("advanced_recon_only", False):
             logger.info(f"{Fore.YELLOW}Running in advanced reconnaissance only mode{Style.RESET_ALL}")
-            recon_options = self.options.copy()
-
-            # If no specific recon modules selected, prompt user or use all
-            if not any([
-                self.options.get("recon_network"),
-                self.options.get("recon_security"),
-                self.options.get("recon_webapp"),
-                self.options.get("recon_infrastructure"),
-                self.options.get("recon_misc"),
-                self.options.get("recon_all")
-            ]):
-    
-                # Interactive prompt
-                logger.info(f"{Fore.CYAN}No specific recon modules selected. Choose modules:{Style.RESET_ALL}")
-                print("1. Network Infrastructure Analysis")
-                print("2. Security Infrastructure Analysis")
-                print("3. Web Application Analysis")
-                print("4. Infrastructure Relationship Mapping")
-                print("5. Miscellaneous Analysis")
-                print("6. All modules")
-                print("Enter module numbers separated by commas (e.g., 1,3,5) or press Enter for all:")
-                
-                try:
-                    user_input = input("> ").strip()
-                    if not user_input:
-                        recon_options["recon_all"] = True
-                    else:
-                        selections = [int(x.strip()) for x in user_input.split(",")]
-                        recon_options["recon_network"] = 1 in selections
-                        recon_options["recon_security"] = 2 in selections
-                        recon_options["recon_webapp"] = 3 in selections
-                        recon_options["recon_infrastructure"] = 4 in selections
-                        recon_options["recon_misc"] = 5 in selections
-                        recon_options["recon_all"] = 6 in selections
-                except (ValueError, EOFError):
-                    logger.warning("Invalid input, running all modules")
-                    recon_options["recon_all"] = True
-            
-            recon_manager = ReconManager(self.target_url, recon_options)
-
-            try:
-                # Run only selected reconnaissance modules
-                recon_results = {}
-                
-                if recon_options.get("recon_all"):
-                    logger.info("Running all reconnaissance modules...")
-                    recon_results = await recon_manager.run_reconnaissance()
-                else:
-                    # Run individual modules based on selection
-                    if recon_options.get("recon_network"):
-                        logger.info("Running network infrastructure analysis...")
-                        recon_results["network"] = await recon_manager.network_analyzer.analyze()
-                        
-                    if recon_options.get("recon_security"):
-                        logger.info("Running security infrastructure analysis...")
-                        recon_results["security"] = await recon_manager.security_analyzer.analyze()
-                        
-                    if recon_options.get("recon_webapp"):
-                        logger.info("Running web application analysis...")
-                        recon_results["webapp"] = await recon_manager.webapp_analyzer.analyze()
-                        
-                    if recon_options.get("recon_infrastructure"):
-                        logger.info("Running infrastructure relationship mapping...")
-                        recon_results["infrastructure"] = await recon_manager.infra_mapper.analyze()
-                        
-                    if recon_options.get("recon_misc"):
-                        logger.info("Running miscellaneous analysis...")
-                        recon_results["miscellaneous"] = await recon_manager.misc_analyzer.analyze()
-                
-                # Store results
-                self.results["reconnaissance"] = recon_results
-                recon_manager.log_recon_findings(recon_results)
-                
-            except Exception as e:
-                logger.error(f"{Fore.RED}Reconnaissance failed: {str(e)}{Style.RESET_ALL}")
-                self.results["reconnaissance"]["error"] = str(e)
-
-            # Generate reports with recon data only
-            self.generate_reports()
-            logger.info(f"{Fore.GREEN}Advanced reconnaissance completed successfully.{Style.RESET_ALL}")
-            return self.results
+            await self.advanced_recon()
+            return
         
         # Step 3: Crawl and identify endpoints
         logger.info(f"{Fore.BLUE}Crawling website for endpoints...{Style.RESET_ALL}")
@@ -238,7 +159,91 @@ class VulnerabilityScanner:
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             logger.error(f"Error validating target: {e}")
             return False
+        
+    async def advanced_recon(self):
+        """If advanced recon only mode is enabled, skip vulnerability scanning"""
+        recon_options = self.options.copy()
+
+        # If no specific recon modules selected, prompt user or use all
+        if not any([
+            self.options.get("recon_network"),
+            self.options.get("recon_security"),
+            self.options.get("recon_webapp"),
+            self.options.get("recon_infrastructure"),
+            self.options.get("recon_misc"),
+            self.options.get("recon_all")
+        ]):
+
+            # Interactive prompt
+            logger.info(f"{Fore.CYAN}No specific recon modules selected. Choose modules:{Style.RESET_ALL}")
+            print("1. Network Infrastructure Analysis")
+            print("2. Security Infrastructure Analysis")
+            print("3. Web Application Analysis")
+            print("4. Infrastructure Relationship Mapping")
+            print("5. Miscellaneous Analysis")
+            print("6. All modules")
+            print("Enter module numbers separated by commas (e.g., 1,3,5) or press Enter for all:")
             
+            try:
+                user_input = input("> ").strip()
+                if not user_input:
+                    recon_options["recon_all"] = True
+                else:
+                    selections = [int(x.strip()) for x in user_input.split(",")]
+                    recon_options["recon_network"] = 1 in selections
+                    recon_options["recon_security"] = 2 in selections
+                    recon_options["recon_webapp"] = 3 in selections
+                    recon_options["recon_infrastructure"] = 4 in selections
+                    recon_options["recon_misc"] = 5 in selections
+                    recon_options["recon_all"] = 6 in selections
+            except (ValueError, EOFError):
+                logger.warning("Invalid input, running all modules")
+                recon_options["recon_all"] = True
+        
+        recon_manager = ReconManager(self.target_url, recon_options)
+
+        try:
+            # Run only selected reconnaissance modules
+            recon_results = {}
+            
+            if recon_options.get("recon_all"):
+                logger.info("Running all reconnaissance modules...")
+                recon_results = await recon_manager.run_reconnaissance()
+            else:
+                # Run individual modules based on selection
+                if recon_options.get("recon_network"):
+                    logger.info("Running network infrastructure analysis...")
+                    recon_results["network"] = await recon_manager.network_analyzer.analyze()
+                    
+                if recon_options.get("recon_security"):
+                    logger.info("Running security infrastructure analysis...")
+                    recon_results["security"] = await recon_manager.security_analyzer.analyze()
+                    
+                if recon_options.get("recon_webapp"):
+                    logger.info("Running web application analysis...")
+                    recon_results["webapp"] = await recon_manager.webapp_analyzer.analyze()
+                    
+                if recon_options.get("recon_infrastructure"):
+                    logger.info("Running infrastructure relationship mapping...")
+                    recon_results["infrastructure"] = await recon_manager.infra_mapper.analyze()
+                    
+                if recon_options.get("recon_misc"):
+                    logger.info("Running miscellaneous analysis...")
+                    recon_results["miscellaneous"] = await recon_manager.misc_analyzer.analyze()
+            
+            # Store results
+            self.results["reconnaissance"] = recon_results
+            recon_manager.log_recon_findings(recon_results)
+            
+        except Exception as e:
+            logger.error(f"{Fore.RED}Reconnaissance failed: {str(e)}{Style.RESET_ALL}")
+            self.results["reconnaissance"]["error"] = str(e)
+
+        # Generate reports with recon data only
+        self.generate_reports()
+        logger.info(f"{Fore.GREEN}Advanced reconnaissance completed successfully.{Style.RESET_ALL}")
+        return self.results
+        
     async def reconnaissance(self) -> None:
         """Perform reconnaissance on the target."""
         # Extract hostname from URL

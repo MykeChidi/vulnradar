@@ -40,7 +40,7 @@ def setup_logger(name: str, level: int = logging.INFO, log_to_file: bool = True,
             os.makedirs(log_dir, exist_ok=True)
             
             # Create timestamp for the current scan
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
             
             if scanner_specific:
                 # For scanner-specific logs, create a subdirectory for the current scan

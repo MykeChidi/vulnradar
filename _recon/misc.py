@@ -1,5 +1,6 @@
 # vulnscan/_recon/misc.py - Miscellaneous analysis techniques
 import aiohttp
+import asyncio
 from typing import Dict, List
 import re
 from pathlib import Path
@@ -73,15 +74,18 @@ class MiscellaneousAnalyzer:
                 for error_type, path in error_triggers:
                     url = f"{self.target.url}{path}"
                     try:
+                        await self.rate_limiter.acquire()
                         async with session.get(url) as response:
+                            await self.rate_limiter.report_success()
                             content = await response.text()
                             error_results["error_pages"][error_type] = await self._analyze_error_page(
                                 content,
                                 response.status
                             )
-                    except Exception as e:
+                    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                        await self.rate_limiter.report_failure()  # ADD THIS LINE
                         self.logger.debug(f"Error trigger failed for {error_type}: {str(e)}")
-                        
+
             # Analyze for patterns
             error_results["error_patterns"] = await self._identify_error_patterns(
                 error_results["error_pages"]
@@ -258,8 +262,9 @@ class MiscellaneousAnalyzer:
         }
         
         for scenario, headers in scenarios.items():
+            await self.rate_limiter.acquire()
             results["browser_caching"][scenario] = await test_with_headers(headers)
-            
+            await self.rate_limiter.report_success()
         return results
         
     async def _check_cache_poisoning(self, session: aiohttp.ClientSession) -> List[Dict]:
@@ -282,7 +287,9 @@ class MiscellaneousAnalyzer:
         
         for test in test_cases:
             try:
+                await self.rate_limiter.acquire()
                 async with session.get(self.target.url, headers=test["headers"]) as response:
+                    await self.rate_limiter.report_success()
                     if "X-Cache" in response.headers or "CF-Cache-Status" in response.headers:
                         vulnerabilities.append({
                             "type": test["name"],
@@ -290,6 +297,7 @@ class MiscellaneousAnalyzer:
                             "evidence": dict(response.headers)
                         })
             except Exception as e:
+                await self.rate_limiter.report_failure()
                 self.logger.debug(f"Cache poisoning test failed: {str(e)}")
                 
         return vulnerabilities
@@ -312,30 +320,36 @@ class MiscellaneousAnalyzer:
         }
         
         try:
+            await self.rate_limiter.acquire()
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.target.url) as response:
-                    headers = response.headers
-                    
-                    # Identify CDN
-                    for provider, signatures in cdn_headers.items():
-                        if any(sig.lower() in headers for sig in signatures):
-                            cdn_results["provider"] = provider
-                            cdn_results["caching_enabled"] = True
-                            break
-                            
-                    # Analyze cache times
-                    if "Cache-Control" in headers:
-                        cdn_results["cache_times"]["Cache-Control"] = headers["Cache-Control"]
-                    if "Expires" in headers:
-                        cdn_results["cache_times"]["Expires"] = headers["Expires"]
+                try:
+                    async with session.get(self.target.url) as response:
+                        await self.rate_limiter.report_success()
+                        headers = response.headers
                         
-                    # Check for issues
-                    if cdn_results["caching_enabled"]:
-                        if "Vary" not in headers:
-                            cdn_results["issues"].append(
-                                "No Vary header set for CDN caching"
-                            )
+                        # Identify CDN
+                        for provider, signatures in cdn_headers.items():
+                            if any(sig.lower() in headers for sig in signatures):
+                                cdn_results["provider"] = provider
+                                cdn_results["caching_enabled"] = True
+                                break
+                                
+                        # Analyze cache times
+                        if "Cache-Control" in headers:
+                            cdn_results["cache_times"]["Cache-Control"] = headers["Cache-Control"]
+                        if "Expires" in headers:
+                            cdn_results["cache_times"]["Expires"] = headers["Expires"]
                             
+                        # Check for issues
+                        if cdn_results["caching_enabled"]:
+                            if "Vary" not in headers:
+                                cdn_results["issues"].append(
+                                    "No Vary header set for CDN caching"
+                                )
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    await self.rate_limiter.report_failure() 
+                    self.logger.error(f"Error analyzing CDN caching {str(e)}")
+                    raise            
         except Exception as e:
             self.logger.error(f"CDN cache analysis failed: {str(e)}")
             
@@ -375,7 +389,9 @@ class MiscellaneousAnalyzer:
                 for endpoint in debug_indicators["debug_endpoints"]:
                     url = f"{self.target.url}{endpoint}"
                     try:
+                        await self.rate_limiter.acquire()
                         async with session.get(url) as response:
+                            await self.rate_limiter.report_success()
                             if response.status == 200:
                                 content = await response.text()
                                 for pattern in debug_indicators["error_detail"]:
@@ -385,7 +401,8 @@ class MiscellaneousAnalyzer:
                                             f"Debug endpoint accessible: {endpoint}"
                                         )
                                         debug_info["risk_level"] = "high"
-                    except Exception:
+                    except (aiohttp.ClientError, asyncio.TimeoutError):
+                        await self.rate_limiter.report_failure() 
                         continue
                         
                 # Check debug parameters
@@ -439,6 +456,7 @@ class MiscellaneousAnalyzer:
                 for artifact in common_artifacts:
                     url = f"{self.target.url}/{artifact}"
                     try:
+
                         async with session.get(url) as response:
                             if response.status == 200:
                                 artifacts["found"].append({
@@ -484,11 +502,13 @@ class MiscellaneousAnalyzer:
             async with aiohttp.ClientSession() as session:
                 for test in tests:
                     try:
+                        await self.rate_limiter.acquire()
                         async with session.request(
                             test["method"],
                             self.target.url,
                             headers=test.get("headers", {})
                         ) as response:
+                            await self.rate_limiter.report_success()
                             analysis = await test["analyze"](response)
                             results["behaviors"][test["name"]] = analysis
                             if analysis.get("issues"):
@@ -498,6 +518,7 @@ class MiscellaneousAnalyzer:
                                     analysis["recommendations"]
                                 )
                     except Exception as e:
+                        await self.rate_limiter.report_failure()
                         self.logger.debug(f"Backend test failed: {str(e)}")
                         
         except Exception as e:
@@ -565,24 +586,30 @@ class MiscellaneousAnalyzer:
         }
         
         try:
+            await self.rate_limiter.acquire()
             async with aiohttp.ClientSession() as session:
-                # Check cache headers
-                async with session.get(self.target.url) as response:
-                    cache_results["headers"] = self._analyze_cache_headers(response.headers)
+                try:
+                    # Check cache headers
+                    async with session.get(self.target.url) as response:
+                        await self.rate_limiter.report_success()
+                        cache_results["headers"] = self._analyze_cache_headers(response.headers)
+                        
+                    # Test cache behavior
+                    cache_results["behavior"] = await self._test_cache_behavior(session)
                     
-                # Test cache behavior
-                cache_results["behavior"] = await self._test_cache_behavior(session)
-                
-                # Check for cache poisoning
-                if self.options.get('check_cache_poisoning', False):
-                    cache_results["vulnerabilities"] = await self._check_cache_poisoning(session)
-                    
-                # Analyze CDN caching
-                cdn_cache = await self._analyze_cdn_caching()
-                if cdn_cache:
-                    cache_results["cdn_cache"] = cdn_cache
-                    
-                return cache_results
+                    # Check for cache poisoning
+                    if self.options.get('check_cache_poisoning', False):
+                        cache_results["vulnerabilities"] = await self._check_cache_poisoning(session)
+                        
+                    # Analyze CDN caching
+                    cdn_cache = await self._analyze_cdn_caching()
+                    if cdn_cache:
+                        cache_results["cdn_cache"] = cdn_cache
+                        
+                    return cache_results
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    await self.rate_limiter.report_failure() 
+                    raise
                 
         except Exception as e:
             self.logger.error(f"Cache analysis failed: {str(e)}")

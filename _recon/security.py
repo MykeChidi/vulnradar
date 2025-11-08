@@ -103,18 +103,28 @@ class SecurityInfrastructureAnalyzer:
         result = {"detected": False, "type": None, "evidence": []}
         
         try:
+            await self.rate_limiter.acquire()
             timeout = aiohttp.ClientTimeout(total=10)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(self.target.url, headers=self.options.get("headers", {})) as response:
-                    headers = response.headers
-                    for waf_name, signatures in waf_signatures.items():
-                        for signature in signatures:
-                            if signature.lower() in [h.lower() for h in headers.keys()]:
-                                result["detected"] = True
-                                result["type"] = waf_name
-                                result["evidence"].append(f"Found header: {signature}")
-                                return result
-                                
+                try:
+                    async with session.get(self.target.url, headers=self.options.get("headers", {})) as response:
+                        await self.rate_limiter.report_success()
+                        headers = response.headers
+                        for waf_name, signatures in waf_signatures.items():
+                            for signature in signatures:
+                                if signature.lower() in [h.lower() for h in headers.keys()]:
+                                    result["detected"] = True
+                                    result["type"] = waf_name
+                                    result["evidence"].append(f"Found header: {signature}")
+                                    return result
+                except aiohttp.ClientResponseError as e:
+                    if e.status == 429:
+                        await self.rate_limiter.report_failure(is_rate_limit=True) 
+                    else:
+                        await self.rate_limiter.report_failure()
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    await self.rate_limiter.report_failure()
+
             return result
         except aiohttp.ClientConnectorError as e:
             self.logger.error(f"Connection failed for WAF header check: {str(e)}")
@@ -146,17 +156,22 @@ class SecurityInfrastructureAnalyzer:
             async with aiohttp.ClientSession() as session:
                 for attack_type, payload in test_payloads:
                     url = f"{self.target.url}?test={payload}"
-                    async with session.get(url, headers=self.options.get("headers", {})) as response:
-                        if response.status == 403 or response.status == 406:
-                            result["detected"] = True
-                            result["evidence"].append(f"Blocked {attack_type} attempt")
-                            
-                        # Check response body for WAF block pages
-                        body = await response.text()
-                        if any(sig in body.lower() for sig in ["blocked", "forbidden", "waf", "security block"]):
-                            result["detected"] = True
-                            result["evidence"].append(f"WAF block page detected for {attack_type}")
-                            
+                    await self.rate_limiter.acquire()
+                    try:
+                        async with session.get(url, headers=self.options.get("headers", {})) as response:
+                            await self.rate_limiter.report_success()
+                            if response.status == 403 or response.status == 406:
+                                result["detected"] = True
+                                result["evidence"].append(f"Blocked {attack_type} attempt")
+                                
+                            # Check response body for WAF block pages
+                            body = await response.text()
+                            if any(sig in body.lower() for sig in ["blocked", "forbidden", "waf", "security block"]):
+                                result["detected"] = True
+                                result["evidence"].append(f"WAF block page detected for {attack_type}")
+                    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                        await self.rate_limiter.report_failure()
+                        continue
             return result
         except Exception as e:
             self.logger.error(f"WAF behavior analysis failed: {str(e)}")
@@ -535,9 +550,11 @@ class SecurityInfrastructureAnalyzer:
         """
         try:
             # Check server headers for OpenSSL version
+            await self.rate_limiter.acquire()
             async with aiohttp.ClientSession() as session:
                 try:
                     async with session.get(self.target.url, timeout=10) as response:
+                        await self.rate_limiter.report_success()
                         server_header = response.headers.get("Server", "").lower()
                         
                         # Check for vulnerable OpenSSL versions in Server header
@@ -554,6 +571,7 @@ class SecurityInfrastructureAnalyzer:
                                     )
                                     return True
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    await self.rate_limiter.report_failure()
                     self.logger.debug(f"Could not check headers: {str(e)}")
             try:
                 # Check SSL certificate and handshake details

@@ -67,23 +67,28 @@ class WebApplicationAnalyzer:
         }
         
         try:
+            await self.rate_limiter.acquire()
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.target.url) as response:
-                    html = await response.text()
-                    headers = response.headers
-                    
-                    # Analyze response headers
-                    tech_results.update(await self._analyze_headers(headers))
-                    
-                    # Analyze HTML content
-                    soup = BeautifulSoup(html, 'html.parser')
-                    tech_results.update(await self._analyze_html(soup))
-                    
-                    # Analyze JavaScript
-                    tech_results["javascript_libs"] = await self._detect_js_libraries(soup)
-                    
-                    return tech_results
-                    
+                try:
+                    async with session.get(self.target.url) as response:
+                        await self.rate_limiter.report_success()
+                        html = await response.text()
+                        headers = response.headers
+                        
+                        # Analyze response headers
+                        tech_results.update(await self._analyze_headers(headers))
+                        
+                        # Analyze HTML content
+                        soup = BeautifulSoup(html, 'html.parser')
+                        tech_results.update(await self._analyze_html(soup))
+                        
+                        # Analyze JavaScript
+                        tech_results["javascript_libs"] = await self._detect_js_libraries(soup)
+                        
+                        return tech_results
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    await self.rate_limiter.report_failure() 
+                    raise    
         except Exception as e:
             self.logger.error(f"Technology detection failed: {str(e)}")
             return {"error": str(e)}
@@ -286,35 +291,40 @@ class WebApplicationAnalyzer:
         }
         
         try:
+            await self.rate_limiter.acquire()
             async with aiohttp.ClientSession() as session:
                 robots_url = f"{self.target.url}/robots.txt"
-                async with session.get(robots_url) as response:
-                    if response.status == 200:
-                        results["found"] = True
-                        content = await response.text()
-                        
-                        # Parse robots.txt content
-                        for line in content.splitlines():
-                            line = line.strip()
-                            if line and not line.startswith('#'):
-                                if line.lower().startswith('disallow:'):
-                                    path = line.split(':', 1)[1].strip()
-                                    results["entries"].append({
-                                        "type": "disallow",
-                                        "path": path
-                                    })
-                                    if any(k in path.lower() for k in ['admin', 'backup', 'config', 'test']):
-                                        results["interesting_paths"].append(path)
-                                elif line.lower().startswith('allow:'):
-                                    path = line.split(':', 1)[1].strip()
-                                    results["entries"].append({
-                                        "type": "allow",
-                                        "path": path
-                                    })
-                                elif line.lower().startswith('sitemap:'):
-                                    sitemap = line.split(':', 1)[1].strip()
-                                    results["sitemaps"].append(sitemap)
-                                    
+                try:
+                    async with session.get(robots_url) as response:
+                        await self.rate_limiter.report_success()
+                        if response.status == 200:
+                            results["found"] = True
+                            content = await response.text()
+                            
+                            # Parse robots.txt content
+                            for line in content.splitlines():
+                                line = line.strip()
+                                if line and not line.startswith('#'):
+                                    if line.lower().startswith('disallow:'):
+                                        path = line.split(':', 1)[1].strip()
+                                        results["entries"].append({
+                                            "type": "disallow",
+                                            "path": path
+                                        })
+                                        if any(k in path.lower() for k in ['admin', 'backup', 'config', 'test']):
+                                            results["interesting_paths"].append(path)
+                                    elif line.lower().startswith('allow:'):
+                                        path = line.split(':', 1)[1].strip()
+                                        results["entries"].append({
+                                            "type": "allow",
+                                            "path": path
+                                        })
+                                    elif line.lower().startswith('sitemap:'):
+                                        sitemap = line.split(':', 1)[1].strip()
+                                        results["sitemaps"].append(sitemap)
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    await self.rate_limiter.report_failure()
+                    self.logger.error(f"Error during robots.txt analysis {str(e)}")                    
         except Exception as e:
             self.logger.error(f"Robots.txt analysis failed: {str(e)}")
             
@@ -342,7 +352,9 @@ class WebApplicationAnalyzer:
                 for location in sitemap_locations:
                     try:
                         url = f"{self.target.url}{location}"
+                        await self.rate_limiter.acquire()
                         async with session.get(url) as response:
+                            await self.rate_limiter.report_success()
                             if response.status == 200:
                                 results["found"] = True
                                 content = await response.text()
@@ -360,6 +372,7 @@ class WebApplicationAnalyzer:
                                         })
                                         
                     except Exception as e:
+                        await self.rate_limiter.report_failure()
                         results["errors"].append(f"Error analyzing {location}: {str(e)}")
                         
         except Exception as e:
@@ -399,7 +412,9 @@ class WebApplicationAnalyzer:
                              directory: str) -> Optional[Dict]:
         """Check if a directory exists and analyze its response."""
         try:
+            await self.rate_limiter.acquire()
             async with session.get(url) as response:
+                await self.rate_limiter.report_success()
                 if response.status != 404:
                     return {
                         "path": f"/{directory}/",
@@ -408,8 +423,9 @@ class WebApplicationAnalyzer:
                         "content_type": response.headers.get("content-type", ""),
                         "interesting": self._is_interesting_response(response)
                     }
-        except Exception:
-            return None
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                await self.rate_limiter.report_failure()  
+                return None
             
     def _is_interesting_response(self, response: aiohttp.ClientResponse) -> bool:
         """Determine if a response is interesting based on various factors."""
@@ -464,7 +480,9 @@ class WebApplicationAnalyzer:
                                 path: str) -> Optional[Dict]:
         """Check if an API endpoint exists and analyze its response."""
         try:
+            await self.rate_limiter.acquire()
             async with session.get(url) as response:
+                await self.rate_limiter.report_success()
                 if response.status != 404:
                     content_type = response.headers.get("content-type", "")
                     return {
@@ -475,8 +493,9 @@ class WebApplicationAnalyzer:
                         "is_api": "json" in content_type.lower() or
                                 "api" in path.lower()
                     }
-        except Exception:
-            return None
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                await self.rate_limiter.report_failure() 
+                return None
             
     async def _check_swagger_docs(self, session: aiohttp.ClientSession) -> List[Dict]:
         """Check for Swagger/OpenAPI documentation."""
@@ -493,7 +512,9 @@ class WebApplicationAnalyzer:
         for path in swagger_paths:
             try:
                 url = f"{self.target.url}{path}"
+                await self.rate_limiter.acquire()
                 async with session.get(url) as response:
+                    await self.rate_limiter.report_success()
                     if response.status == 200:
                         content_type = response.headers.get("content-type", "")
                         if "json" in content_type.lower():
@@ -510,7 +531,8 @@ class WebApplicationAnalyzer:
                                     })
                             except Exception:
                                 continue
-            except Exception:
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                await self.rate_limiter.report_failure()  
                 continue
                 
         return docs
@@ -555,34 +577,40 @@ class WebApplicationAnalyzer:
         js_files = []
         
         try:
+            await self.rate_limiter.acquire()
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.target.url) as response:
-                    html = await response.text()
-                    soup = BeautifulSoup(html, 'html.parser')
-                    
-                    # Find all script tags with src attribute
-                    scripts = soup.find_all("script", src=True)
-                    
-                    for script in scripts:
-                        src = script["src"]
+                try:
+                    async with session.get(self.target.url) as response:
+                        await self.rate_limiter.report_success()
+                        html = await response.text()
+                        soup = BeautifulSoup(html, 'html.parser')
                         
-                        # Handle relative URLs
-                        if not src.startswith(("http://", "https://")):
-                            if src.startswith("//"):
-                                src = f"https:{src}"
-                            elif src.startswith("/"):
-                                src = f"{self.target.url}{src}"
-                            else:
-                                src = f"{self.target.url}/{src}"
-                                
-                        try:
-                            # Stream analysis instead of loading full content
-                            analysis = await self._analyze_js_file(session, src)
-                            if analysis:
-                                js_files.append(analysis)
-                        except Exception as e:
-                            self.logger.debug(f"Failed to analyze {src}: {str(e)}")
+                        # Find all script tags with src attribute
+                        scripts = soup.find_all("script", src=True)
+                        
+                        for script in scripts:
+                            src = script["src"]
                             
+                            # Handle relative URLs
+                            if not src.startswith(("http://", "https://")):
+                                if src.startswith("//"):
+                                    src = f"https:{src}"
+                                elif src.startswith("/"):
+                                    src = f"{self.target.url}{src}"
+                                else:
+                                    src = f"{self.target.url}/{src}"
+                                    
+                            try:
+                                # Stream analysis instead of loading full content
+                                analysis = await self._analyze_js_file(session, src)
+                                if analysis:
+                                    js_files.append(analysis)
+                            except Exception as e:
+                                self.logger.debug(f"Failed to analyze {src}: {str(e)}")
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    await self.rate_limiter.report_failure() 
+                    self.logger.error(f"Error during js file discovery {str(e)}")   
+
         except Exception as e:
             self.logger.error(f"JavaScript file discovery failed: {str(e)}")
             
@@ -603,10 +631,13 @@ class WebApplicationAnalyzer:
         }
         
         try:
+            await self.rate_limiter.acquire()
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
                 if response.status != 200:
+                    await self.rate_limiter.report_failure()
                     return None
                 
+                await self.rate_limiter.report_success()
                 # Track file size
                 content_length = response.headers.get('Content-Length')
                 if content_length:

@@ -63,7 +63,7 @@ A comprehensive, asynchronous web vulnerability scanner designed to identify com
 Install the required Python packages:
 
 ```bash
-pip install aiohttp colorama dnspython python-nmap tqdm wafw00f selenium beautifulsoup4 requests reportlab sqlalchemy pandas jinja2
+pip install -r requirements.txt
 ```
 
 ### Optional Dependencies

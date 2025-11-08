@@ -101,6 +101,28 @@ class VulnerabilityScanner:
         else:
             self.cache = None
             logger.info(f"{Fore.YELLOW}Caching disabled{Style.RESET_ALL}")
+    
+    def display_banner(self):
+        """Modern styled banner with colors."""
+        RED = Fore.RED
+        GREEN = Fore.GREEN
+        YELLOW = Fore.YELLOW
+        CYAN = Fore.CYAN
+        print(f"""
+            {RED}╔{'═'*74}╗
+            {RED}║{' '*74}║
+            {RED}║  {GREEN}{Style.DIM}██╗   ██╗██╗   ██╗██╗     ███╗   ██╗███████╗ ██████╗ █████╗ ███╗   ██╗{RED}  ║
+            {RED}║  {GREEN}{Style.DIM}██║   ██║██║   ██║██║     ████╗  ██║██╔════╝██╔════╝██╔══██╗████╗  ██║{RED}  ║
+            {RED}║  {YELLOW}{Style.DIM}██║   ██║██║   ██║██║     ██╔██╗ ██║███████╗██║     ███████║██╔██╗ ██║{RED}  ║
+            {RED}║  {YELLOW}{Style.DIM}╚██╗ ██╔╝██║   ██║██║     ██║╚██╗██║╚════██║██║     ██╔══██║██║╚██╗██║{RED}  ║
+            {RED}║  {CYAN}{Style.DIM} ╚████╔╝ ╚██████╔╝███████╗██║ ╚████║███████║╚██████╗██║  ██║██║ ╚████║{RED}  ║
+            {RED}║  {CYAN}{Style.DIM}  ╚═══╝   ╚═════╝ ╚══════╝╚═╝  ╚═══╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝{RED}  ║
+            {RED}║{' '*74}║
+            {RED}║  {Fore.WHITE}{Style.BRIGHT}{' '*16}Web Security & Vulnerability Scanner{Style.RESET_ALL}{' '*20}{RED}║
+            {RED}║  {Fore.MAGENTA}{' '*25}v1.0.0{Style.RESET_ALL}{' '*40}{Fore.RED} ║
+            {RED}║{' '*74}║
+            {RED}╚{'═'*74}╝{Style.RESET_ALL}\n
+        """)
 
     async def scan(self) -> Dict:
         """
@@ -115,7 +137,9 @@ class VulnerabilityScanner:
         if not await self.validate_target():
             logger.error(f"{Fore.RED}Invalid target URL: {self.target_url}{Style.RESET_ALL}")
             return {"error": "Invalid target URL"}
-            
+
+        self.display_banner()    
+        
         # Step 2: Perform reconnaissance
         logger.info(f"{Fore.BLUE}Starting reconnaissance phase...{Style.RESET_ALL}")
         await self.reconnaissance()

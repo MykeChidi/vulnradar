@@ -26,6 +26,7 @@ class RateLimiter:
         self.min_rate = min_rate
         self.max_rate = max_rate
         self.tokens = 10
+        self.last_update = time.time()
         self.consecutive_successes = 0
         self.consecutive_failures = 0
         self.lock = asyncio.Lock()
@@ -43,7 +44,7 @@ class RateLimiter:
                 # Refill tokens based on time passed
                 now = time.time()
                 elapsed = now - self.last_update
-                self.tokens = min(self.tokens, self.tokens + elapsed * self.current_rate)
+                self.tokens = min(self.tokens + elapsed * self.current_rate, self.max_rate)
                 self.last_update = now
                 
                 if self.tokens < tokens:
@@ -53,6 +54,7 @@ class RateLimiter:
             
             # Consume tokens
             self.tokens -= tokens
+            self.last_update = time.time()
         
     async def report_success(self):
         """Report a successful request."""

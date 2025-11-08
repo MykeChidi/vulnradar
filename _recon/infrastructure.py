@@ -485,33 +485,40 @@ class InfrastructureRelationshipMapper:
         
         try:
             if provider_name in service_signatures:
+                await self.rate_limiter.acquire()
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(self.target.url) as response:
-                        headers = response.headers
-                        
-                        for service, sigs in service_signatures[provider_name].items():
-                            evidence = []
+                    try:
+                        async with session.get(self.target.url) as response:
+                            await self.rate_limiter.report_success()
+                            headers = response.headers
                             
-                            # Check domains
-                            target_domain = self.target.hostname.lower()
-                            for domain in sigs["domains"]:
-                                if domain in target_domain:
-                                    evidence.append(f"Domain pattern match: {domain}")
-                                    
-                            # Check headers
-                            for header in sigs["headers"]:
-                                if any(h.lower().startswith(header.lower()) 
-                                      for h in headers.keys()):
-                                    evidence.append(f"Header match: {header}")
-                                    
-                            if evidence:
-                                services.append({
-                                    "provider": provider_name,
-                                    "service": service,
-                                    "evidence": evidence,
-                                    "confidence": "high" if len(evidence) > 1 else "medium"
-                                })
+                            for service, sigs in service_signatures[provider_name].items():
+                                evidence = []
                                 
+                                # Check domains
+                                target_domain = self.target.hostname.lower()
+                                for domain in sigs["domains"]:
+                                    if domain in target_domain:
+                                        evidence.append(f"Domain pattern match: {domain}")
+                                        
+                                # Check headers
+                                for header in sigs["headers"]:
+                                    if any(h.lower().startswith(header.lower()) 
+                                        for h in headers.keys()):
+                                        evidence.append(f"Header match: {header}")
+                                        
+                                if evidence:
+                                    services.append({
+                                        "provider": provider_name,
+                                        "service": service,
+                                        "evidence": evidence,
+                                        "confidence": "high" if len(evidence) > 1 else "medium"
+                                    })
+                    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                        await self.rate_limiter.report_failure()  
+                        self.logger.error(f"Could not map cloud service: {str(e)}")
+                        raise
+
         except Exception as e:
             self.logger.error(f"Cloud service mapping failed: {str(e)}")
             
@@ -543,58 +550,65 @@ class InfrastructureRelationshipMapper:
         }
         
         try:
+            await self.rate_limiter.acquire()
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.target.url) as response:
-                    headers = response.headers
-                    
-                    for cdn, sigs in cdn_signatures.items():
-                        evidence = []
+                try:
+                    async with session.get(self.target.url) as response:
+                        await self.rate_limiter.report_success()
+                        headers = response.headers
                         
-                        # Check headers
-                        for header in sigs["headers"]:
-                            if header.lower() in [h.lower() for h in headers.keys()]:
-                                evidence.append(f"Found {cdn} header: {header}")
-                                
-                        # Check nameservers if present in signatures
-                        if "nameservers" in sigs:
-                            try:
-                                ns_records = dns.resolver.resolve(
-                                    self.target.hostname, 'NS'
-                                )
-                                for ns in ns_records:
-                                    ns_str = str(ns).lower()
-                                    for ns_pattern in sigs["nameservers"]:
-                                        if ns_pattern in ns_str:
-                                            evidence.append(
-                                                f"Nameserver match: {ns_str}"
-                                            )
-                            except Exception:
-                                pass
-                                
-                        # Check CNAME records for CDN domains
-                        if "domains" in sigs:
-                            try:
-                                cname_records = dns.resolver.resolve(
-                                    self.target.hostname, 'CNAME'
-                                )
-                                for cname in cname_records:
-                                    cname_str = str(cname).lower()
-                                    for domain in sigs["domains"]:
-                                        if domain in cname_str:
-                                            evidence.append(
-                                                f"CNAME match: {cname_str}"
-                                            )
-                            except Exception:
-                                pass
-                                
-                        if evidence:
-                            cdn_info = {
-                                "provider": cdn,
-                                "evidence": evidence,
-                                "confidence": "high" if len(evidence) > 1 else "medium"
-                            }
-                            break
+                        for cdn, sigs in cdn_signatures.items():
+                            evidence = []
                             
+                            # Check headers
+                            for header in sigs["headers"]:
+                                if header.lower() in [h.lower() for h in headers.keys()]:
+                                    evidence.append(f"Found {cdn} header: {header}")
+                                    
+                            # Check nameservers if present in signatures
+                            if "nameservers" in sigs:
+                                try:
+                                    ns_records = dns.resolver.resolve(
+                                        self.target.hostname, 'NS'
+                                    )
+                                    for ns in ns_records:
+                                        ns_str = str(ns).lower()
+                                        for ns_pattern in sigs["nameservers"]:
+                                            if ns_pattern in ns_str:
+                                                evidence.append(
+                                                    f"Nameserver match: {ns_str}"
+                                                )
+                                except Exception:
+                                    pass
+                                    
+                            # Check CNAME records for CDN domains
+                            if "domains" in sigs:
+                                try:
+                                    cname_records = dns.resolver.resolve(
+                                        self.target.hostname, 'CNAME'
+                                    )
+                                    for cname in cname_records:
+                                        cname_str = str(cname).lower()
+                                        for domain in sigs["domains"]:
+                                            if domain in cname_str:
+                                                evidence.append(
+                                                    f"CNAME match: {cname_str}"
+                                                )
+                                except Exception:
+                                    pass
+                                    
+                            if evidence:
+                                cdn_info = {
+                                    "provider": cdn,
+                                    "evidence": evidence,
+                                    "confidence": "high" if len(evidence) > 1 else "medium"
+                                }
+                                break
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    await self.rate_limiter.report_failure()
+                    self.logger.error(f"Could not detect CDN {str(e)}")
+                    raise
+                           
         except Exception as e:
             self.logger.error(f"CDN detection failed: {str(e)}")
             
@@ -810,25 +824,32 @@ class InfrastructureRelationshipMapper:
         }
         
         try:
+            await self.rate_limiter.acquire()
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.target.url) as response:
-                    html = await response.text()
-                    
-                    # Analyze script tags
-                    soup = BeautifulSoup(html, 'html.parser')
-                    scripts = soup.find_all('script', src=True)
-                    
-                    for script in scripts:
-                        service = await self._identify_third_party_service(script['src'])
-                        if service:
-                            category = service.get('category', 'infrastructure')
-                            services[category].append(service)
-                            
-                    # Check for API endpoints
-                    services["external_apis"] = await self._discover_external_apis(soup)
-                    
-                    return services
-                    
+                try:
+                    async with session.get(self.target.url) as response:
+                        await self.rate_limiter.report_success()
+                        html = await response.text()
+                        
+                        # Analyze script tags
+                        soup = BeautifulSoup(html, 'html.parser')
+                        scripts = soup.find_all('script', src=True)
+                        
+                        for script in scripts:
+                            service = await self._identify_third_party_service(script['src'])
+                            if service:
+                                category = service.get('category', 'infrastructure')
+                                services[category].append(service)
+                                
+                        # Check for API endpoints
+                        services["external_apis"] = await self._discover_external_apis(soup)
+                        
+                        return services
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    await self.rate_limiter.report_failure() 
+                    self.logger.error(f"Error mapping third party services {str(e)}")
+                    raise
+
         except Exception as e:
             self.logger.error(f"Third-party service mapping failed: {str(e)}")
             return {"error": str(e)}
@@ -1093,42 +1114,48 @@ class InfrastructureRelationshipMapper:
         dependencies = []
         
         try:
+            await self.rate_limiter.acquire()
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.target.url) as response:
-                    html = await response.text()
-                    soup = BeautifulSoup(html, 'html.parser')
-                    
-                    # Check for external resources
-                    external_resources = {
-                        "scripts": soup.find_all("script", src=True),
-                        "stylesheets": soup.find_all("link", rel="stylesheet"),
-                        "images": soup.find_all("img", src=True),
-                        "fonts": soup.find_all("link", rel="stylesheet")
-                    }
-                    
-                    for resource_type, elements in external_resources.items():
-                        for element in elements:
-                            url = element.get("src") or element.get("href")
-                            if url and not url.startswith(("data:", "blob:")):
-                                try:
-                                    parsed_url = urlparse(url)
-                                    if parsed_url.netloc and parsed_url.netloc != self.target.hostname:
-                                        dependencies.append({
-                                            "type": resource_type,
-                                            "url": url,
-                                            "domain": parsed_url.netloc,
-                                            "status": "active"
-                                        })
-                                except Exception:
-                                    continue
-                                    
-                    # Check for API dependencies
-                    api_dependencies = await self._discover_external_apis(soup)
-                    dependencies.extend([
-                        {"type": "api", "url": api["url"], "status": "active"}
-                        for api in api_dependencies
-                    ])
-                    
+                try:
+                    async with session.get(self.target.url) as response:
+                        await self.rate_limiter.report_success()
+                        html = await response.text()
+                        soup = BeautifulSoup(html, 'html.parser')
+                        
+                        # Check for external resources
+                        external_resources = {
+                            "scripts": soup.find_all("script", src=True),
+                            "stylesheets": soup.find_all("link", rel="stylesheet"),
+                            "images": soup.find_all("img", src=True),
+                            "fonts": soup.find_all("link", rel="stylesheet")
+                        }
+                        
+                        for resource_type, elements in external_resources.items():
+                            for element in elements:
+                                url = element.get("src") or element.get("href")
+                                if url and not url.startswith(("data:", "blob:")):
+                                    try:
+                                        parsed_url = urlparse(url)
+                                        if parsed_url.netloc and parsed_url.netloc != self.target.hostname:
+                                            dependencies.append({
+                                                "type": resource_type,
+                                                "url": url,
+                                                "domain": parsed_url.netloc,
+                                                "status": "active"
+                                            })
+                                    except Exception:
+                                        continue
+                                        
+                        # Check for API dependencies
+                        api_dependencies = await self._discover_external_apis(soup)
+                        dependencies.extend([
+                            {"type": "api", "url": api["url"], "status": "active"}
+                            for api in api_dependencies
+                        ])
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    await self.rate_limiter.report_failure()
+                    self.logger.error(f"Could not map dependencies {str(e)}")
+                    raise    
         except Exception as e:
             self.logger.error(f"Dependency mapping failed: {str(e)}")
             

@@ -75,7 +75,7 @@ class NetworkInfrastructureAnalyzer:
         
         try:
             # Quick A record check to validate domain
-            test_query = self.dns_resolver.resolve(self.target.hostname, 'A')
+            self.dns_resolver.resolve(self.target.hostname, 'A')
         except dns.resolver.NXDOMAIN:
             self.logger.error(f"Domain {self.target.hostname} does not exist")
             return {"error": "domain_not_found", "message": f"Domain {self.target.hostname} does not exist"}

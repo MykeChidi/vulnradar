@@ -11,7 +11,7 @@ from pathlib import Path
 from utils.logger import setup_logger
 from utils.rate_limit import RateLimiter
 from utils.cache import ScanCache
-from _recon._target import ReconTarget
+from reconn._target import ReconTarget
 
 
 class NetworkInfrastructureAnalyzer:

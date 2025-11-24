@@ -6,12 +6,12 @@ from urllib.parse import urlparse
 from pathlib import Path
 from utils.logger import setup_logger
 from utils.cache import ScanCache
-from _recon.network import NetworkInfrastructureAnalyzer
-from _recon.security import SecurityInfrastructureAnalyzer
-from _recon.webapp import WebApplicationAnalyzer
-from _recon.infrastructure import InfrastructureRelationshipMapper
-from _recon.misc import MiscellaneousAnalyzer
-from _recon._target import ReconTarget
+from reconn.network import NetworkInfrastructureAnalyzer
+from reconn.security import SecurityInfrastructureAnalyzer
+from reconn.webapp import WebApplicationAnalyzer
+from reconn.infrastructure import InfrastructureRelationshipMapper
+from reconn.misc import MiscellaneousAnalyzer
+from reconn._target import ReconTarget
 
 
 class ReconManager:

@@ -234,7 +234,10 @@ class TechDetector:
                 
                 # Parse HTML for structured detection
                 try:
-                    soup = BeautifulSoup(html_content, 'html.parser')
+                    try:
+                        soup = BeautifulSoup(html_content, 'lxml')
+                    except:
+                        soup = BeautifulSoup(html_content, 'html.parser')
                     structured_detections = self._detect_from_structure(soup)
                     self._merge_detections(detected_techs, structured_detections)
                 except Exception as e:

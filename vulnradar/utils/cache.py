@@ -1,12 +1,17 @@
 # vulnradar/utils/cache.py - Caching for redundant requests
 
 import hashlib
-import pickle
+import hmac
+import os 
+import threading
+import json
 import time
 from pathlib import Path
+from cryptography.fernet import Fernet
 from typing import Any, Optional, Callable, Dict
 import functools
 from .logger import setup_logger
+from .validator import Validator
 
 
 class CacheEntry:
@@ -34,7 +39,7 @@ class CacheEntry:
 class ScanCache:
     """Cache for scan results."""
     
-    def __init__(self, cache_dir: Path, default_ttl: int = 3600):
+    def __init__(self, cache_dir: Path, default_ttl: int = 3600, encryption_key: Optional[bytes] = None):
         """
         Initialize cache.
         
@@ -43,11 +48,21 @@ class ScanCache:
             default_ttl: Default time to live in seconds
         """
         self.cache_dir = cache_dir
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.default_ttl = default_ttl
         self.memory_cache: Dict[str, CacheEntry] = {}
         self.logger = setup_logger("ScanCache")
+        self._lock = threading.Lock()
         
+        # Initialize encryption
+        if encryption_key:
+            self.cipher = Fernet(encryption_key)
+        else:
+            # Generate key - cache won't persist across restarts
+            key = Fernet.generate_key()
+            self.cipher = Fernet(key)
+            self.logger.warning("Using ephemeral encryption key")
+
         # Cache statistics
         self.hits = 0
         self.misses = 0
@@ -56,6 +71,56 @@ class ScanCache:
         """Generate cache key from arguments."""
         key_data = str(args) + str(sorted(kwargs.items()))
         return hashlib.sha256(key_data.encode()).hexdigest()
+    
+    def _serialize(self, data: Any) -> bytes:
+        """Safely serialize data."""
+        try:
+            # Convert to JSON
+            json_str = json.dumps(data, default=str, ensure_ascii=False)
+            
+            # Encrypt
+            encrypted = self.cipher.encrypt(json_str.encode('utf-8'))
+            
+            # Add HMAC for integrity
+            mac = hmac.new(
+                self.cipher._signing_key,
+                encrypted,
+                hashlib.sha256
+            ).digest()
+            
+            return mac + encrypted
+        except Exception as e:
+            self.logger.error(f"Serialization error: {str(e)}")
+            raise
+    
+    def _deserialize(self, data: bytes) -> Any:
+        """Safely deserialize data."""
+        try:
+            # Split HMAC and encrypted data
+            if len(data) < 32:
+                raise ValueError("Invalid cache data")
+            
+            mac = data[:32]
+            encrypted = data[32:]
+            
+            # Verify HMAC
+            expected_mac = hmac.new(
+                self.cipher._signing_key,
+                encrypted,
+                hashlib.sha256
+            ).digest()
+            
+            if not hmac.compare_digest(mac, expected_mac):
+                raise ValueError("Cache integrity check failed")
+            
+            # Decrypt
+            decrypted = self.cipher.decrypt(encrypted)
+            
+            # Deserialize JSON
+            return json.loads(decrypted.decode('utf-8'))
+        except Exception as e:
+            self.logger.error(f"Deserialization error: {str(e)}")
+            raise
     
     def get(self, key: str) -> Optional[Any]:
         """
@@ -67,33 +132,60 @@ class ScanCache:
         Returns:
             Cached value or None if not found/expired
         """
-        # Check memory cache first
-        if key in self.memory_cache:
-            entry = self.memory_cache[key]
-            if not entry.is_expired():
-                self.hits += 1
-                self.logger.debug(f"Memory cache hit: {key}")
-                return entry.data
-            else:
-                del self.memory_cache[key]
+        # Validate key
+        try:
+            Validator.validate_cache_key(key)
+        except ValueError as e:
+            self.logger.warning(f"Invalid cache key: {str(e)}")
+            return None
         
+        # Check memory cache first
+        with self._lock:
+            if key in self.memory_cache:
+                entry = self.memory_cache[key]
+                if not entry.is_expired():
+                    self.hits += 1
+                    self.logger.debug(f"Memory cache hit: {key}")
+                    return entry.data
+                else:
+                    del self.memory_cache[key]
+            
         # Check disk cache
         cache_file = self.cache_dir / f"{key}.cache"
         if cache_file.exists():
             try:
+                 # Verify file permissions
+                stat = cache_file.stat()
+                if stat.st_mode & 0o077:
+                    self.logger.warning(f"Insecure cache file permissions: {cache_file}")
+                    cache_file.unlink()
+                    return None
+                
                 with open(cache_file, 'rb') as f:
-                    entry = pickle.load(f)
+                    data = f.read()
+                
+                # Deserialize securely
+                cache_data = self._deserialize(data)
+                
+                # Reconstruct entry
+                entry = CacheEntry(
+                    data=cache_data['data'],
+                    ttl=cache_data['ttl']
+                )
+                entry.timestamp = cache_data['timestamp']
                 
                 if not entry.is_expired():
-                    # Load into memory cache
-                    self.memory_cache[key] = entry
+                    with self._lock:
+                        self.memory_cache[key] = entry
                     self.hits += 1
-                    self.logger.debug(f"Disk cache hit: {key}")
                     return entry.data
                 else:
                     cache_file.unlink()
+                    
             except Exception as e:
                 self.logger.warning(f"Failed to load cache {key}: {str(e)}")
+                if cache_file.exists():
+                    cache_file.unlink()
         
         self.misses += 1
         return None
@@ -107,24 +199,56 @@ class ScanCache:
             value: Value to cache
             ttl: Time to live (uses default if None)
         """
+         # Validate key
+        try:
+            Validator.validate_cache_key(key)
+        except ValueError as e:
+            self.logger.warning(f"Invalid cache key: {str(e)}")
+            return
         ttl = ttl if ttl is not None else self.default_ttl
         entry = CacheEntry(value, ttl)
         
         # Store in memory cache
-        self.memory_cache[key] = entry
+        with self._lock:
+            self.memory_cache[key] = entry
         
-        # Store in disk cache
-        cache_file = self.cache_dir / f"{key}.cache"
+       # Prepare for disk
+        cache_data = {
+            'data': value,
+            'timestamp': entry.timestamp,
+            'ttl': ttl
+        }
+        
         try:
-            with open(cache_file, 'wb') as f:
-                pickle.dump(entry, f)
+            serialized = self._serialize(cache_data)
+        except Exception as e:
+            self.logger.warning(f"Cannot serialize cache {key}: {str(e)}")
+            return
+        
+        # Atomic file write
+        cache_file = self.cache_dir / f"{key}.cache"
+        temp_file = cache_file.with_suffix('.tmp')
+        
+        try:
+            # Write with secure permissions
+            with open(temp_file, 'wb', opener=lambda path, flags: 
+                     os.open(path, flags, 0o600)) as f:
+                f.write(serialized)
+                f.flush()
+                os.fsync(f.fileno())
+            
+            # Atomic rename
+            temp_file.replace(cache_file)
         except Exception as e:
             self.logger.warning(f"Failed to save cache {key}: {str(e)}")
+            if temp_file.exists():
+                temp_file.unlink()
     
     def invalidate(self, key: str):
         """Invalidate a cache entry."""
-        if key in self.memory_cache:
-            del self.memory_cache[key]
+        with self._lock:
+            if key in self.memory_cache:
+                del self.memory_cache[key]
         
         cache_file = self.cache_dir / f"{key}.cache"
         if cache_file.exists():
@@ -132,9 +256,14 @@ class ScanCache:
     
     def clear_all(self):
         """Clear all cache entries."""
-        self.memory_cache.clear()
+        with self._lock:
+            self.memory_cache.clear()
         for cache_file in self.cache_dir.glob("*.cache"):
-            cache_file.unlink()
+            try:
+                cache_file.unlink()
+            except Exception as e:
+                self.logger.warning(f"Failed to delete {cache_file}: {e}")
+        
         self.logger.info("Cache cleared")
     
     def get_stats(self) -> Dict:

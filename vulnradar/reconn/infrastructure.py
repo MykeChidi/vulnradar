@@ -832,7 +832,10 @@ class InfrastructureRelationshipMapper:
                         html = await response.text()
                         
                         # Analyze script tags
-                        soup = BeautifulSoup(html, 'html.parser')
+                        try:
+                            soup = BeautifulSoup(html, 'lxml')
+                        except:
+                            soup = BeautifulSoup(html, 'html.parser')
                         scripts = soup.find_all('script', src=True)
                         
                         for script in scripts:
@@ -1120,7 +1123,10 @@ class InfrastructureRelationshipMapper:
                     async with session.get(self.target.url) as response:
                         await self.rate_limiter.report_success()
                         html = await response.text()
-                        soup = BeautifulSoup(html, 'html.parser')
+                        try:
+                            soup = BeautifulSoup(html, 'lxml')
+                        except:
+                            soup = BeautifulSoup(html, 'html.parser')
                         
                         # Check for external resources
                         external_resources = {

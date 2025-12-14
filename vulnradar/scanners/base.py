@@ -69,13 +69,17 @@ class BaseScanner(abc.ABC):
             List[Dict]: List of forms with their inputs
         """
         try:
-            async with aiohttp.ClientSession(headers=self.headers) as session:
+            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                 async with session.get(url, timeout=self.timeout) as response:
                     if response.status != 200:
                         return []
                         
                     html = await response.text()
-                    soup = BeautifulSoup(html, 'html.parser')
+                    try:
+                        soup = BeautifulSoup(html, 'lxml')
+                    except:
+                        soup = BeautifulSoup(html, 'html.parser')
                     forms = []
                     
                     for form in soup.find_all('form'):
@@ -117,7 +121,7 @@ class BaseScanner(abc.ABC):
                     return forms
                     
         except Exception as e:
-            print(f"Error extracting forms from {url}: {e}")
+            self.logger.error(f"Error extracting forms from {url}: {e}")
             return []
 
     async def _extract_parameters(self, url: str) -> Dict[str, str]:
@@ -140,5 +144,5 @@ class BaseScanner(abc.ABC):
             return {k: v[0] if v else '' for k, v in query_params.items()}
             
         except Exception as e:
-            print(f"Error extracting parameters from {url}: {e}")
+            self.logger.error(f"Error extracting parameters from {url}: {e}")
             return {}

@@ -50,7 +50,7 @@ class FileInclusionScanner(BaseScanner):
             vulnerabilities.extend(form_vulns)
         
         except Exception as e:
-            print(f"Error scanning '{url}' for file inclusion: {e}")
+            self.logger.error(f"Error scanning '{url}' for file inclusion: {e}")
             
         return vulnerabilities
     
@@ -74,7 +74,7 @@ class FileInclusionScanner(BaseScanner):
         
         # If no existing parameters, test common file inclusion parameter names
         if not params:
-            for param_name in self.file_params[:5]:  # Test top 5 common parameters
+            for param_name in self.file_params[:8]:  # Test top 8 common parameters
                 test_url = f"{url}?{param_name}=index.php"
                 
                 # Test LFI
@@ -123,7 +123,8 @@ class FileInclusionScanner(BaseScanner):
                     parsed_url.params, new_query, parsed_url.fragment
                 ))
                 
-                async with aiohttp.ClientSession(headers=self.headers) as session:
+                timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                     async with session.get(test_url, timeout=self.timeout) as response:
                         response_text = await response.text()
                         
@@ -163,7 +164,8 @@ class FileInclusionScanner(BaseScanner):
                     parsed_url.params, new_query, parsed_url.fragment
                 ))
                 
-                async with aiohttp.ClientSession(headers=self.headers) as session:
+                timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                     async with session.get(test_url, timeout=self.timeout) as response:
                         response_text = await response.text()
                         
@@ -201,7 +203,8 @@ class FileInclusionScanner(BaseScanner):
                         form_data[field['name']] = field['value'] or 'test'
                 
                 # Submit form
-                async with aiohttp.ClientSession(headers=self.headers) as session:
+                timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                     if form['method'] == 'post':
                         async with session.post(form['action'], data=form_data, timeout=self.timeout) as response:
                             response_text = await response.text()
@@ -243,7 +246,8 @@ class FileInclusionScanner(BaseScanner):
                         form_data[field['name']] = field['value'] or 'test'
                 
                 # Submit form
-                async with aiohttp.ClientSession(headers=self.headers) as session:
+                timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                     if form['method'] == 'post':
                         async with session.post(form['action'], data=form_data, timeout=self.timeout) as response:
                             response_text = await response.text()
@@ -371,7 +375,8 @@ class FileInclusionScanner(BaseScanner):
         """
         try:
             # Re-test the specific payload
-            async with aiohttp.ClientSession(headers=self.headers) as session:
+            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                 async with session.get(url, timeout=self.timeout) as response:
                     response_text = await response.text()
                     

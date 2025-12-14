@@ -79,7 +79,10 @@ class WebApplicationAnalyzer:
                         tech_results.update(await self._analyze_headers(headers))
                         
                         # Analyze HTML content
-                        soup = BeautifulSoup(html, 'html.parser')
+                        try:
+                            soup = BeautifulSoup(html, 'lxml')
+                        except:
+                            soup = BeautifulSoup(html, 'html.parser')
                         tech_results.update(await self._analyze_html(soup))
                         
                         # Analyze JavaScript
@@ -583,7 +586,10 @@ class WebApplicationAnalyzer:
                     async with session.get(self.target.url) as response:
                         await self.rate_limiter.report_success()
                         html = await response.text()
-                        soup = BeautifulSoup(html, 'html.parser')
+                        try:
+                            soup = BeautifulSoup(html, 'lxml')
+                        except:
+                            soup = BeautifulSoup(html, 'html.parser')
                         
                         # Find all script tags with src attribute
                         scripts = soup.find_all("script", src=True)

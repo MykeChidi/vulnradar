@@ -85,9 +85,15 @@ class NetworkInfrastructureAnalyzer:
         except dns.resolver.Timeout:
             self.logger.error(f"DNS timeout for {self.target.hostname}")
             return {"error": "timeout", "message": "DNS query timed out", "retryable": True}
+        except dns.resolver.NoAnswer:
+            self.logger.warning(f"No answer for {self.target.hostname}")
+            return {"error": "no_answer", "message": "DNS query returned no answer"}
+        except dns.exception.DNSException as e:  # Catch DNS-specific errors
+            self.logger.error(f"DNS exception: {str(e)}")
+            return {"error": "dns_exception", "message": str(e)}
         except Exception as e:
-            self.logger.error(f"DNS error: {str(e)}")
-            return {"error": "dns_error", "message": str(e)}
+            self.logger.error(f"Uexpected DNS error: {str(e)}")
+            return {"error": "unexpected", "message": str(e)}
         
         for record_type in record_types:
             try:

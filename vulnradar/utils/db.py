@@ -3,7 +3,12 @@
 from sqlalchemy import Column, Integer, String, Text, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import QueuePool
+from typing import List, Dict
+from .logger import setup_logger
 
+
+logger = setup_logger("Database", log_to_file=False)
 Base = declarative_base()
 
 class Vulnerability(Base):
@@ -20,10 +25,22 @@ class Vulnerability(Base):
 class VulnradarDatabase:
     """Simple SQLite-backed vulnerability store."""
 
-    def __init__(self, db_path: str = "vulnradar.db"):
-        self.engine = create_engine(f"sqlite:///{db_path}", echo=False)
+    def __init__(self, db_path: str = "vulnradar.db", pool_size: int = 5):
+        self.engine = create_engine(
+            f"sqlite:///{db_path}", 
+            echo=False,
+            poolclass=QueuePool,
+            pool_size=pool_size,
+            max_overflow=10,
+            pool_pre_ping=True,  # Verify connections
+            pool_recycle=3600 )
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
+
+    def __del__(self):
+        """Cleanup on deletion"""
+        if hasattr(self, 'engine'):
+            self.engine.dispose()
 
     def add_vulnerability(
         self,
@@ -36,16 +53,32 @@ class VulnradarDatabase:
         evidence: str,
         remediation: str
     ):
+        if not all(isinstance(v, str) for v in [target, vulnerability_type, endpoint, 
+                                             severity, description, evidence, remediation]):
+            raise ValueError("All parameters must be strings")
+    
+        if len(target) > 255 or len(vulnerability_type) > 100:
+            raise ValueError("Input exceeds maximum length")
+        
+        if severity not in ['Critical', 'High', 'Medium', 'Low', 'Info']:
+            raise ValueError(f"Invalid severity: {severity}")
+        
         session = self.Session()
-        vuln = Vulnerability(
-            target=target,
-            vulnerability_type=vulnerability_type,
-            endpoint=endpoint,
-            severity=severity,
-            description=description,
-            evidence=evidence,
-            remediation=remediation
-        )
-        session.add(vuln)
-        session.commit()
-        session.close()
+        try:
+            vuln = Vulnerability(
+                target=target[:255], 
+                vulnerability_type=vulnerability_type[:100],
+                endpoint=endpoint[:2048], 
+                severity=severity,
+                description=description[:4096],
+                evidence=evidence[:8192],
+                remediation=remediation[:4096]
+            )
+            session.add(vuln)
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+

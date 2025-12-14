@@ -46,7 +46,7 @@ class SQLInjectionScanner(BaseScanner):
                 vulnerabilities.extend(post_vulns)
                 
         except Exception as e:
-            print(f"Error scanning '{url}' for sqli: {e}")
+            self.logger.error(f"Error scanning '{url}' for sqli: {e}")
 
         return vulnerabilities
         
@@ -81,7 +81,8 @@ class SQLInjectionScanner(BaseScanner):
                 
                 # Make the request
                 try:
-                    async with aiohttp.ClientSession(headers=self.headers) as session:
+                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                         async with session.get(test_url, timeout=self.timeout) as response:
                             response_text = await response.text()
                             
@@ -103,7 +104,7 @@ class SQLInjectionScanner(BaseScanner):
                                 break
                                 
                 except Exception as e:
-                    print(f"Error testing SQL injection on GET parameter {param_name} at {url}: {e}")
+                    self.logger.error(f"Error testing SQL injection on GET parameter {param_name} at {url}: {e}")
                     
         return vulnerabilities
         
@@ -139,7 +140,8 @@ class SQLInjectionScanner(BaseScanner):
                         
                 # Make the request
                 try:
-                    async with aiohttp.ClientSession(headers=self.headers) as session:
+                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                         if form.get("method") == "post":
                             async with session.post(action_url, data=form_data, timeout=self.timeout) as response:
                                 response_text = await response.text()
@@ -183,7 +185,7 @@ class SQLInjectionScanner(BaseScanner):
                                     break
                                     
                 except Exception as e:
-                    print(f"Error testing SQL injection on field {field_name} at {action_url}: {e}")
+                    self.logger.error(f"Error testing SQL injection on field {field_name} at {action_url}: {e}")
                     
         return vulnerabilities
         
@@ -254,7 +256,8 @@ class SQLInjectionScanner(BaseScanner):
                 test_url = urlunparse(test_parts)
                 
                 # Make the request
-                async with aiohttp.ClientSession(headers=self.headers) as session:
+                timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                     async with session.get(test_url, timeout=self.timeout) as response:
                         response_text = await response.text()
                         
@@ -275,7 +278,7 @@ class SQLInjectionScanner(BaseScanner):
                     test_url = urlunparse(test_parts)
                     
                     # Make the request
-                    async with aiohttp.ClientSession(headers=self.headers) as session:
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                         async with session.get(test_url, timeout=self.timeout) as response:
                             response_text = await response.text()
                             
@@ -286,5 +289,5 @@ class SQLInjectionScanner(BaseScanner):
             return False
             
         except Exception as e:
-            print(f"Error validating SQL injection at '{url}': {e}")
+            self.logger.error(f"Error validating SQL injection at '{url}': {e}")
             return False

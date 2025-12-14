@@ -8,3 +8,8 @@ Lib/
 pyvenv.cfg
 .pytest_cache/
 .benchmarks/
+
+tests/
+pytest.ini
+Makefile
+.coverage

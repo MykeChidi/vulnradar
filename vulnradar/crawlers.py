@@ -1,6 +1,7 @@
 # vulnradar/crawlers.py - Web Crawling module
 
 import asyncio
+from collections import deque
 from typing import Dict, Generator, List, Tuple
 from urllib.parse import urljoin, urlparse
 
@@ -9,6 +10,9 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from .utils.logger import setup_logger
+
+logger = setup_logger("WebCrawler")
 
 
 class WebCrawler:
@@ -35,25 +39,71 @@ class WebCrawler:
         self.max_pages = max_pages
         self.page_count = 0
         self.visited_urls = set()
-        self.to_visit = [(base_url, 0)]  # (url, depth)
+        self.to_visit = deque([(base_url, 0)], maxlen=max_pages * 2)  # (url, depth)
+        self._url_limit_reached = False
         self.base_domain = urlparse(base_url).netloc
         
         # Selenium setup if enabled
         self.driver = None
+        self._in_context = False
+
         if use_selenium:
-            options = Options()
-            options.add_argument("--headless")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
+            self._initialize_selenium()
+
+    def _initialize_selenium(self):
+        """Initialize Selenium with security options."""
+        options = Options()
+        
+        # Security options
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-plugins")
+        options.add_argument("--disable-images")
+        
+        # Privacy options
+        options.add_argument("--incognito")
+        options.add_argument("--disable-cookies")
+        
+        # Set download restrictions
+        prefs = {
+            "download_restrictions": 3,
+            "profile.default_content_setting_values.notifications": 2,
+            "profile.default_content_setting_values.geolocation": 2
+        }
+        options.add_experimental_option("prefs", prefs)
+        options.add_experimental_option("excludeSwitches", ["enable-logging"])
+        
+        # Resource limits
+        options.add_argument("--disable-software-rasterizer")
+        options.add_argument(f"--window-size=1920,1080")
+        
+        try:
             service = Service()
             self.driver = webdriver.Chrome(service=service, options=options)
+            self.driver.set_page_load_timeout(self.timeout)
+            self.driver.set_script_timeout(self.timeout)
+            logger.info("Selenium initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Selenium: {e}")
+            self.use_selenium = False
+            self.driver = None
     
     async def __aenter__(self):
+        self._in_context = True
         return self
         
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.driver:
-            self.driver.quit()
+            try:
+                self.driver.quit()
+                logger.debug("Selenium driver closed")
+            except Exception as e:
+                logger.error(f"Error closing Selenium: {e}")
+            finally:
+                self.driver = None
     
     async def crawl(self) -> Generator[Tuple[str, int], None, None]: # type: ignore
         """
@@ -64,57 +114,70 @@ class WebCrawler:
         """
         session_timeout = aiohttp.ClientTimeout(total=self.timeout)
         
-        async with aiohttp.ClientSession(headers=self.headers, timeout=session_timeout) as session:
-            while self.to_visit and self.page_count < self.max_pages:
-                url, depth = self.to_visit.pop(0)
-                
-                # Skip if we've already visited this URL or if it's beyond max depth
-                if url in self.visited_urls or depth > self.max_depth:
-                    continue
-                
-                # Check if maximum pages has been reached
-                if self.page_count >= self.max_pages:
-                    break
+        try:
+            async with aiohttp.ClientSession(headers=self.headers, timeout=session_timeout) as session:
+                while self.to_visit and self.page_count < self.max_pages:
+                    if len(self.visited_urls) > self.max_pages * 1.5:
+                            logger.warning(f"URL tracking limit reached: {len(self.visited_urls)}")
+                            self._url_limit_reached = True
+                            break
+                    
+                    url, depth = self.to_visit.popleft()
+                    
+                    # Skip if we've already visited this URL or if it's beyond max depth
+                    if url in self.visited_urls or depth > self.max_depth:
+                        continue
+                    
+                    # Check if maximum pages has been reached
+                    if self.page_count >= self.max_pages:
+                        break
 
-                self.visited_urls.add(url)
-                self.page_count += 1
+                    self.visited_urls.add(url)
+                    self.page_count += 1
 
-                try:
-                    # Fetch the page
-                    status_code = 0
-                    html_content = ""
-                    
-                    if self.use_selenium and self._is_html_url(url):
-                        # Use Selenium for JavaScript-rendered content
-                        self.driver.get(url)
-                        await asyncio.sleep(2)  # Wait for JS to render
-                        html_content = self.driver.page_source
-                        status_code = 200  # Assume success with Selenium
-                    else:
-                        # Use aiohttp for regular requests
-                        async with session.get(url) as response:
-                            status_code = response.status
-                            if self._is_html_response(response):
-                                html_content = await response.text()
-                    
-                    # Yield the discovered URL and status code
-                    yield url, status_code
-                    
-                    # Parse HTML and extract links if it's HTML content
-                    if html_content and depth < self.max_depth:
-                        new_urls = self._extract_links(url, html_content)
-                        for new_url in new_urls:
-                            if new_url not in self.visited_urls:
-                                self.to_visit.append((new_url, depth + 1))
-                                
-                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                    # Log error but continue crawling
-                    print(f"Error crawling {url}: {e}")
-                except Exception as e:
-                    print(f"Unexpected error crawling {url}: {e}")
-                    
-            print(f"Crawling finished. Total pages visited: {self.page_count}")
-
+                    try:
+                        # Fetch the page
+                        status_code = 0
+                        html_content = ""
+                        
+                        if self.use_selenium and self.driver and self._is_html_url(url):
+                            # Use Selenium for JavaScript-rendered content
+                            self.driver.get(url)
+                            await asyncio.sleep(2)  # Wait for JS to render
+                            html_content = self.driver.page_source
+                            status_code = 200  # Assume success with Selenium
+                        else:
+                            # Use aiohttp for regular requests
+                            async with session.get(url) as response:
+                                status_code = response.status
+                                if self._is_html_response(response):
+                                    html_content = await response.text()
+                        
+                        # Yield the discovered URL and status code
+                        yield url, status_code
+                        
+                        # Parse HTML and extract links if it's HTML content
+                        if html_content and depth < self.max_depth:
+                            new_urls = self._extract_links(url, html_content)
+                            for new_url in new_urls:
+                                if new_url not in self.visited_urls:
+                                    self.to_visit.append((new_url, depth + 1))
+                                    
+                    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                        # Log error but continue crawling
+                        logger.debug(f"Error crawling {url}: {e}")
+                    except Exception as e:
+                        logger.error(f"Unexpected error crawling {url}: {e}")
+                        
+                logger.info(f"Crawling finished. Total pages visited: {self.page_count}")
+        except Exception as e:
+            logger.error(f"Crawl error: {e}")
+            raise
+        finally:
+            # Cleanup if not using context manager
+            if not self._in_context and self.driver:
+                await self.__aexit__(None, None, None)
+    
     def prioritize_endpoints(self, endpoints: List[str]) -> List[str]:
         """
         Prioritize endpoints by likelihood of vulnerabilities.
@@ -140,7 +203,7 @@ class WebCrawler:
                 score += 5
                 
             # Medium priority
-            if url.endswith('.php') or url.endswith('.asp') or url.endswith('.jsp'):
+            if url.endswith(('.php', '.asp', '.jsp', '.aspx')):
                 score += 3
                 
             # Low priority - static content
@@ -162,7 +225,11 @@ class WebCrawler:
         Returns:
             List[str]: List of absolute URLs
         """
-        soup = BeautifulSoup(html_content, 'html.parser')
+        try:
+            soup = BeautifulSoup(html_content, 'lxml') 
+        except:
+            soup = BeautifulSoup(html_content, 'html.parser')
+
         links = []
         
         # Extract links from <a> tags
@@ -195,7 +262,10 @@ class WebCrawler:
             bool: True if URL should be crawled, False otherwise
         """
         # Parse URL
-        parsed = urlparse(url)
+        try:
+            parsed = urlparse(url)
+        except:
+            return False
         
         # Check if URL is on the same domain
         if parsed.netloc != self.base_domain:
@@ -207,7 +277,8 @@ class WebCrawler:
             
         # Skip certain file types
         skip_extensions = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.svg', 
-                          '.css', '.js', '.ico', '.zip', '.tar', '.gz']
+                          '.css', '.js', '.ico', '.zip', '.tar', '.gz'
+                          '.mp4', '.mp3', '.wav', '.avi', '.mov']
         if any(parsed.path.endswith(ext) for ext in skip_extensions):
             return False
             

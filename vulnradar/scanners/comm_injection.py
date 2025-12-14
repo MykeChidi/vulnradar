@@ -57,7 +57,7 @@ class CommandInjectionScanner(BaseScanner):
             vulnerabilities.extend(json_vulns)
             
         except Exception as e:
-            print(f"Error scanning '{url}' for command injection: {e}")
+            self.logger.error(f"Error scanning '{url}' for command injection: {e}")
             
         return vulnerabilities
 
@@ -90,8 +90,9 @@ class CommandInjectionScanner(BaseScanner):
                     
                     # Time the request for time-based detection
                     start_time = time.time()
-                    
-                    async with aiohttp.ClientSession(headers=self.headers) as session:
+
+                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                         async with session.get(test_url, timeout=self.timeout) as response:
                             response_time = time.time() - start_time
                             response_text = await response.text()
@@ -163,8 +164,9 @@ class CommandInjectionScanner(BaseScanner):
                         
                         # Time the request
                         start_time = time.time()
-                        
-                        async with aiohttp.ClientSession(headers=self.headers) as session:
+
+                        timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                        async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                             if method == 'post':
                                 async with session.post(action_url, data=form_data, timeout=self.timeout) as response:
                                     response_time = time.time() - start_time
@@ -220,8 +222,9 @@ class CommandInjectionScanner(BaseScanner):
                     
                     # Time the request
                     start_time = time.time()
-                    
-                    async with aiohttp.ClientSession(headers=self.headers) as session:
+
+                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                         headers = self.headers.copy()
                         headers['Content-Type'] = 'application/json'
                         
@@ -341,7 +344,8 @@ class CommandInjectionScanner(BaseScanner):
         """
         try:
             # Re-test with the same payload
-            async with aiohttp.ClientSession(headers=self.headers) as session:
+            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                 # Try different methods based on original finding
                 methods_to_try = ['GET', 'POST']
                 
@@ -367,7 +371,7 @@ class CommandInjectionScanner(BaseScanner):
             # If we can't reproduce the exact evidence, try a simple validation payload
             validation_payload = "; echo 'VALIDATION_TEST_12345'"
             
-            async with aiohttp.ClientSession(headers=self.headers) as session:
+            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                 async with session.get(f"{url}{'&' if '?' in url else '?'}test={validation_payload}", timeout=self.timeout) as response:
                     response_text = await response.text()
                     
@@ -376,6 +380,6 @@ class CommandInjectionScanner(BaseScanner):
                         return True
                         
         except Exception as e:
-            print(f"Error validating command injection at {url}: {e}")
+            self.logger.error(f"Error validating command injection at {url}: {e}")
             
         return False

@@ -49,7 +49,7 @@ class CSRFScanner(BaseScanner):
                 vulnerabilities.extend(csrf_findings)
                 
         except Exception as e:
-            print(f"Error scanning '{url}' for CSRF: {e}")
+            self.logger.error(f"Error scanning '{url}' for CSRF: {e}")
             
         return vulnerabilities
     
@@ -125,7 +125,8 @@ class CSRFScanner(BaseScanner):
                     form_data[input_field['name']] = 'csrf_test_value'
             
             # Submit form without CSRF token
-            async with aiohttp.ClientSession(headers=self.headers) as session:
+            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                 if form['method'].lower() == 'post':
                     async with session.post(
                         form['action'] or url,
@@ -149,7 +150,7 @@ class CSRFScanner(BaseScanner):
                             }
                             
         except Exception as e:
-            print(f"Error testing missing CSRF token: {e}")
+            self.logger.error(f"Error testing missing CSRF token: {e}")
             
         return None
     
@@ -202,7 +203,7 @@ class CSRFScanner(BaseScanner):
                 return vulnerability
                 
         except Exception as e:
-            print(f"Error testing CSRF token validation: {e}")
+            self.logger.error(f"Error testing CSRF token validation: {e}")
             
         return None
     
@@ -227,7 +228,8 @@ class CSRFScanner(BaseScanner):
             test_headers = self.headers.copy()
             test_headers['Referer'] = 'https://evil.com'
             
-            async with aiohttp.ClientSession(headers=test_headers) as session:
+            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+            async with aiohttp.ClientSession(headers=test_headers, timeout=timeout) as session:
                 if form['method'].lower() == 'post':
                     async with session.post(
                         form['action'] or url,
@@ -248,7 +250,7 @@ class CSRFScanner(BaseScanner):
                             }
                             
         except Exception as e:
-            print(f"Error testing referrer bypass: {e}")
+            self.logger.error(f"Error testing referrer bypass: {e}")
             
         return None
     
@@ -266,7 +268,8 @@ class CSRFScanner(BaseScanner):
             Dict: Vulnerability information if found, None otherwise
         """
         try:
-            async with aiohttp.ClientSession(headers=self.headers) as session:
+            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                 if form['method'].lower() == 'post':
                     async with session.post(
                         form['action'] or url,
@@ -287,7 +290,7 @@ class CSRFScanner(BaseScanner):
                             }
                             
         except Exception as e:
-            print(f"Error submitting CSRF test: {e}")
+            self.logger.error(f"Error submitting CSRF test: {e}")
             
         return None
     
@@ -312,7 +315,8 @@ class CSRFScanner(BaseScanner):
                     # Test if we can still submit without proper CSRF protection
                     test_data = eval(payload) if payload.startswith('{') else {}
                     
-                    async with aiohttp.ClientSession(headers=self.headers) as session:
+                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                         if form['method'].lower() == 'post':
                             async with session.post(
                                 form['action'] or url,
@@ -323,6 +327,6 @@ class CSRFScanner(BaseScanner):
                                 return response.status in [200, 201, 302, 303]
                                 
         except Exception as e:
-            print(f"Error validating CSRF vulnerability in '{url}': {e}")
+            self.logger.error(f"Error validating CSRF vulnerability in '{url}': {e}")
             
         return False

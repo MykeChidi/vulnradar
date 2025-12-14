@@ -50,7 +50,7 @@ class PathTraversalScanner(BaseScanner):
             vulnerabilities.extend(file_vulns)
         
         except Exception as e:
-            print(f"Error scanning {url} for path traversal: {e}")
+            self.logger.error(f"Error scanning {url} for path traversal: {e}")
         
         return vulnerabilities
     
@@ -169,7 +169,8 @@ class PathTraversalScanner(BaseScanner):
                         parsed_url.params, new_query, parsed_url.fragment
                     ))
                     
-                    async with aiohttp.ClientSession(headers=self.headers) as session:
+                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                         async with session.get(test_url, timeout=self.timeout) as response:
                             response_text = await response.text()
                             
@@ -216,7 +217,8 @@ class PathTraversalScanner(BaseScanner):
                             form_data[field['name']] = field['value'] or 'test'
                     
                     # Submit form
-                    async with aiohttp.ClientSession(headers=self.headers) as session:
+                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                         if form['method'] == 'post':
                             async with session.post(form['action'], data=form_data, timeout=self.timeout) as response:
                                 response_text = await response.text()
@@ -353,7 +355,8 @@ class PathTraversalScanner(BaseScanner):
         """
         try:
             # Re-test the specific payload
-            async with aiohttp.ClientSession(headers=self.headers) as session:
+            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                 async with session.get(url, timeout=self.timeout) as response:
                     response_text = await response.text()
                     

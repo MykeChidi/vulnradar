@@ -18,11 +18,31 @@ class ReconTarget:
     is_https: bool = False
 
     def __post_init__(self):
+        """Validate all target attributes."""
         # Validate URL format
         parsed = urlparse(self.url)
         if not parsed.scheme or not parsed.netloc:
-            logger.error(f"Invalid URL: {self.url}")
+            error_msg = f"Invalid URL format: {self.url}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        # Validate scheme
+        if parsed.scheme not in ['http', 'https']:
+            error_msg = f"Invalid URL scheme: {parsed.scheme}. Must be http or https"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         
         # Validate port range
-        if not 1 <= self.port <= 65535:
-            logger.error(f"Invalid port: {self.port}")
+        if not isinstance(self.port, int) or not 1 <= self.port <= 65535:
+            error_msg = f"Invalid port: {self.port}. Must be integer between 1-65535"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        # Validate hostname
+        if not self.hostname:
+            error_msg = "Hostname cannot be empty"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        logger.debug(f"Target validated: {self.url}")
+

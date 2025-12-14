@@ -49,7 +49,7 @@ class XSSScanner(BaseScanner):
             vulnerabilities.extend(dom_vulns)
 
         except Exception as e:
-            print(f"Error scanning '{url}' for XSS: {e}")
+            self.logger.error(f"Error scanning '{url}' for XSS: {e}")
 
         return vulnerabilities
         
@@ -82,7 +82,8 @@ class XSSScanner(BaseScanner):
                 
                 # Make the request
                 try:
-                    async with aiohttp.ClientSession(headers=self.headers) as session:
+                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                         async with session.get(test_url, timeout=self.timeout) as response:
                             response_text = await response.text()
                             
@@ -104,7 +105,7 @@ class XSSScanner(BaseScanner):
                                 break
                                 
                 except Exception as e:
-                    print(f"Error testing XSS on GET parameter {param_name} at {url}: {e}")
+                    self.logger.error(f"Error testing XSS on GET parameter {param_name} at {url}: {e}")
                     
         return vulnerabilities
         
@@ -140,7 +141,8 @@ class XSSScanner(BaseScanner):
                         
                 # Make the request
                 try:
-                    async with aiohttp.ClientSession(headers=self.headers) as session:
+                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                         if form.get("method") == "post":
                             async with session.post(action_url, data=form_data, timeout=self.timeout) as response:
                                 response_text = await response.text()
@@ -184,7 +186,7 @@ class XSSScanner(BaseScanner):
                                     break
                                     
                 except Exception as e:
-                    print(f"Error testing XSS on {action_url}: {e}")
+                    self.logger.error(f"Error testing XSS on {action_url}: {e}")
         return vulnerabilities
     
     def _check_for_xss_reflection(self, response_text: str, payload: str) -> bool:
@@ -223,7 +225,10 @@ class XSSScanner(BaseScanner):
             return True
         
         # Check for script execution context
-        soup = BeautifulSoup(response_text, 'html.parser')
+        try:
+            soup = BeautifulSoup(response_text, 'lxml')
+        except:
+            soup = BeautifulSoup(response_text, 'html.parser')
         
         # Check if payload appears in dangerous contexts
         dangerous_contexts = [
@@ -310,7 +315,10 @@ class XSSScanner(BaseScanner):
             return snippet
         
         # If still not found, look for partial matches
-        soup = BeautifulSoup(response_text, 'html.parser')
+        try:
+            soup = BeautifulSoup(response_text, 'lxml')
+        except:
+            soup = BeautifulSoup(response_text, 'html.parser')
         
         # Check in script tags
         for script in soup.find_all('script'):
@@ -385,7 +393,8 @@ class XSSScanner(BaseScanner):
             test_url = url + payload
             
             try:
-                async with aiohttp.ClientSession(headers=self.headers) as session:
+                timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                     async with session.get(test_url, timeout=self.timeout) as response:
                         response_text = await response.text()
                         
@@ -404,7 +413,7 @@ class XSSScanner(BaseScanner):
                             })
                             
             except Exception as e:
-                print(f"Error testing DOM XSS on {url}: {e}")
+                self.logger.error(f"Error testing DOM XSS on {url}: {e}")
         
         return vulnerabilities
 
@@ -463,7 +472,10 @@ class XSSScanner(BaseScanner):
             str: Evidence string showing the DOM XSS context
         """
         # Look for script tags that might contain vulnerable patterns
-        soup = BeautifulSoup(response_text, 'html.parser')
+        try:
+            soup = BeautifulSoup(response_text, 'lxml')
+        except:
+            soup = BeautifulSoup(response_text, 'html.parser')
         
         for script in soup.find_all('script'):
             script_content = script.text
@@ -514,7 +526,8 @@ class XSSScanner(BaseScanner):
                 test_parts[4] = new_query
                 test_url = urlunparse(test_parts)
                 
-                async with aiohttp.ClientSession(headers=self.headers) as session:
+                timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                     async with session.get(test_url, timeout=self.timeout) as response:
                         response_text = await response.text()
                         
@@ -531,8 +544,9 @@ class XSSScanner(BaseScanner):
                             form_data[input_field.get("name")] = payload
                         else:
                             form_data[input_field.get("name")] = input_field.get("value", "")
-                    
-                    async with aiohttp.ClientSession(headers=self.headers) as session:
+                            
+                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                         if form.get("method") == "post":
                             async with session.post(form.get("action"), data=form_data, timeout=self.timeout) as response:
                                 response_text = await response.text()
@@ -542,5 +556,5 @@ class XSSScanner(BaseScanner):
             return False
             
         except Exception as e:
-            print(f"Error validating XSS vulnerability at '{url}': {e}")
+            self.logger.error(f"Error validating XSS vulnerability at '{url}': {e}")
             return False

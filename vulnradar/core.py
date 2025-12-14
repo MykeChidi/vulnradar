@@ -28,6 +28,7 @@ from .utils.db import VulnradarDatabase
 from .utils.logger import setup_logger
 from .utils.reporter import Report, ReportGenerator
 from .utils.cache import ScanCache
+from .utils.validator import Validator
 from .recon import ReconManager
 
 # Initialize colorama
@@ -59,9 +60,16 @@ class VulnRadar:
             "technologies": {},
         }
         
+        try:
+            Validator.validate_url(self.target_url)
+        except ValueError as err:
+            logger.error(f"Invalid target URL: {str(err)}")
+            raise
+
         # Headers for HTTP requests
         self.headers = {
-            "User-Agent": options.get("user_agent", "VulnRadar/1.0"),
+            "User-Agent": Validator.validate_header_value(
+                options.get("user_agent", "VulnRadar/1.0"), "User-Agent"),
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.5",
             "Accept-Encoding": "gzip, deflate",
@@ -69,7 +77,8 @@ class VulnRadar:
         }
         
         if options.get("cookies"):
-            self.headers["Cookie"] = options.get("cookies")
+            self.headers["Cookie"] = Validator.validate_header_value(
+                options["cookies"], "Cookie")
             
         # Database connection
         if options.get("use_db", False):
@@ -81,8 +90,9 @@ class VulnRadar:
         self.max_workers = options.get("max_workers", 5)
         
         # Create output directory if it doesn't exist
-        self.output_dir = Path(options.get("output_dir", "vulnradar_results"))
-        self.output_dir.mkdir(exist_ok=True)
+        self.output_dir = Validator.sanitize_file_path(
+            options.get("output_dir", "scan_results"))
+        self.output_dir.mkdir(exist_ok=True, mode=0o755)
         
         # Initialize cache
         if not options.get("no_cache", False):
@@ -139,7 +149,7 @@ class VulnRadar:
         self.display_banner()    
         
         # Step 2: Perform reconnaissance
-        logger.info(f"{Fore.BLUE}Starting reconnaissance phase...{Style.RESET_ALL}")
+        logger.info(f"{Fore.BLUE}Starting basic reconnaissance phase...{Style.RESET_ALL}")
         await self.reconnaissance()
 
         # If advanced recon only mode is enabled, skip vulnerability scanning
@@ -174,9 +184,12 @@ class VulnRadar:
         Returns:
             bool: True if target is valid, False otherwise
         """
+        # Vaidate accessibility
+        connector = aiohttp.TCPConnector(limit=1)
+        timeout = aiohttp.ClientTimeout(total=10, connect=5)
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(self.target_url, headers=self.headers, timeout=10) as response:
+            async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+                async with session.get(self.target_url, headers=self.headers, allow_redirects=False) as response:
                     return 200 <= response.status < 400
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             logger.error(f"Error validating target: {e}")

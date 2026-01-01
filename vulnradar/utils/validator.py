@@ -115,7 +115,7 @@ class Validator:
             raise ValueError(f"{name} header exceeds maximum length")
         
         if not Validator.SAFE_HEADER_VALUE.match(value):
-                raise ValueError("Header contains invalid characters")
+            raise ValueError("Header contains invalid characters")
         
         # Check for injection attempts
         dangerous_chars = ['\r', '\n', '\0']

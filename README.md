@@ -133,7 +133,7 @@ python -m vulnradar
 - `--no-command-injection` - Skip command injection scanning
 
 #### Advanced Reconnaissance Options
-- `--advanced-recon-only` - Perform reconnaissance only, skip vulnerability scanning
+- `--recon-only` - Perform reconnaissance only, skip vulnerability scanning
 - `--recon-network` - Enable network infrastructure analysis
 - `--recon-security` - Enable security infrastructure analysis
 - `--recon-webapp` - Enable web application analysis
@@ -150,6 +150,7 @@ python -m vulnradar
 - `--no-service-detection` - Skip service detection on open ports
 - `--no-os-detection` - Skip target OS detection
 - `--no-script-scan` - Skip nmap script scan
+- `--port-range` - Range of ports to scan
 
 **Web Application Analysis:**
 - `--no-content-discovery` - Skip content discovery
@@ -229,24 +230,24 @@ python -m vulnradar https://example.com \
 ### Advanced Reconnaissance Only
 ```bash
 # Interactive module selection
-python -m vulnradar https://example.com --advanced-recon-only
+python -m vulnradar https://example.com --recon-only
 
 # Specific modules
 python -m vulnradar https://example.com \
-    --advanced-recon-only \
+    --recon-only \
     --recon-network \
     --recon-security
 
 # All modules
 python -m vulnradar https://example.com \
-    --advanced-recon-only \
+    --recon-only \
     --recon-all
 ```
 
 ### Fine-Tuned Reconnaissance
 ```bash
 python -m vulnradar https://example.com \
-    --advanced-recon-only \
+    --recon-only \
     --recon-network \
     --no-os-detection \
     --no-script-scan \
@@ -285,11 +286,11 @@ VulnRadar generates comprehensive reports in the specified output directory:
 
 ```
 scan_results/
-├── vulnerability_report.html    # Interactive HTML report
-├── vulnerability_report.pdf     # PDF documentation
-├── vulnerability_report.json    # Machine-readable results
-├── vulnerability_report.xlsx    # Excel spreadsheet (if --excel)
-└── vulnradar.db                  # SQLite database (if --use-db)
+├── example.com.html    # Interactive HTML report
+├── example.com.pdf     # PDF documentation
+├── example.com.json    # Machine-readable results
+├── example.com.xlsx    # Excel spreadsheet (if --excel)
+└── vulnradar.db        # SQLite database (if --use-db)
 ```
 
 ### Report Contents
@@ -305,17 +306,6 @@ scan_results/
   - Technical details and payloads
 
 ## Configuration
-
-### Custom Headers
-Modify the default headers in the `VulnRadar` class:
-
-```python
-self.headers = {
-    "User-Agent": "Custom-Scanner",
-    "Accept": "text/html,application/xhtml+xml",
-    "Custom-Header": "Custom-Value"
-}
-```
 
 ### Timeout and Concurrency
 Adjust performance settings based on target responsiveness:
@@ -348,7 +338,7 @@ python -m vulnradar https://fast-site.com --timeout 5 --max-workers 15
 - Test both authenticated and unauthenticated attack surfaces
 
 ### Reconnaissance Strategy
-- Start with `--advanced-recon-only` to understand the target
+- Start with `--recon-only` to understand the target
 - Use specific recon modules to focus on areas of interest
 - Disable unnecessary checks with fine-grained flags to speed up scans
 - Save recon results to database for future reference

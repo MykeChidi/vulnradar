@@ -153,7 +153,7 @@ class NetworkInfrastructureAnalyzer:
                 scan_args.append('-sV')
             if self.options.get('os_detection', True):
                 scan_args.append('-O')
-            if self.options.get('script_scan', False):
+            if self.options.get('script_scan', True):
                 scan_args.append('-sC')
                 
             # Adjust timing based on privileges
@@ -164,10 +164,11 @@ class NetworkInfrastructureAnalyzer:
             
             # Convert args list to string
             args = ' '.join(scan_args)
+            port_range = self.options.get('port_range', '1-1000')
             
             # Run the scan
             self.logger.info(f"Starting port scan on {self.target.ip} with args: {args}")
-            scanner.scan(self.target.ip, '1-1000', arguments=args)
+            scanner.scan(self.target.ip, port_range, arguments=args)
             
             # Check if scan was successful
             if self.target.ip not in scanner.all_hosts():

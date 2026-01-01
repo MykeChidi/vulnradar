@@ -17,80 +17,95 @@ def parse_arguments():
     parser.add_argument("url", nargs='?', help="Target URL to scan")
     parser.add_argument("--cookies", help="Cookies to include with HTTP requests")
     parser.add_argument("--user-agent", default="VulnRadar/1.0", help="User-Agent string")
-
     parser.add_argument("--gui", action="store_true", help="Launch graphical user interface")
 
     # Scan options
-    parser.add_argument("--crawl-depth", type=int, default=3, help="Maximum crawl depth")
-    parser.add_argument("--timeout", type=int, default=10, help="Request timeout in seconds")
-    parser.add_argument("--max-workers", type=int, default=5, help="Maximum concurrent workers")
-    parser.add_argument("--use-selenium", action="store_true", help="Use Selenium for JavaScript rendering")
-    parser.add_argument("--max-crawl-pages", type=int, default=1000, help="Maximum number of pages to crawl")
+    scan_opt = parser.add_argument_group('Scan Options', 'Configure scan behaviour and performance')
+    scan_opt.add_argument("--crawl-depth", type=int, default=3, help="Maximum crawl depth")
+    scan_opt.add_argument("--timeout", type=int, default=10, help="Request timeout in seconds")
+    scan_opt.add_argument("--max-workers", type=int, default=5, help="Maximum concurrent workers")
+    scan_opt.add_argument("--use-selenium", action="store_true", help="Use Selenium for JavaScript rendering")
+    scan_opt.add_argument("--max-crawl-pages", type=int, default=1000, help="Maximum number of pages to crawl")
+    scan_opt.add_argument("--port-scan", action="store_true", help="Perform port scanning")
 
     # Feature toggles
-    parser.add_argument("--port-scan", action="store_true", help="Perform port scanning")
-    parser.add_argument("--no-sqli", action="store_true", help="Skip SQL injection scanning")
-    parser.add_argument("--no-xss", action="store_true", help="Skip XSS scanning")
-    parser.add_argument("--no-csrf", action="store_true", help="Skip CSRF scanning")
-    parser.add_argument("--no-ssrf", action="store_true", help="Skip SSRF scanning")
-    parser.add_argument("--no-path-traversal", action="store_true", help="Skip path traversal scanning")
-    parser.add_argument("--no-file-inclusion", action="store_true", help="Skip file inclusion scanning")
-    parser.add_argument("--no-command-injection", action="store_true", help="Skip command injection scanning")
+    scanner_opt = parser.add_argument_group('Vulnerability Scanning', 'Enable/disable specific vulnerability scans')
+    scanner_opt.add_argument("--no-sqli", action="store_true", help="Skip SQL injection scanning")
+    scanner_opt.add_argument("--no-xss", action="store_true", help="Skip XSS scanning")
+    scanner_opt.add_argument("--no-csrf", action="store_true", help="Skip CSRF scanning")
+    scanner_opt.add_argument("--no-ssrf", action="store_true", help="Skip SSRF scanning")
+    scanner_opt.add_argument("--no-path-traversal", action="store_true", help="Skip path traversal scanning")
+    scanner_opt.add_argument("--no-file-inclusion", action="store_true", help="Skip file inclusion scanning")
+    scanner_opt.add_argument("--no-command-injection", action="store_true", help="Skip command injection scanning")
     
     # Recon options
-    parser.add_argument("--advanced-recon-only", action="store_true", help="Perform recon only, skip vulnerabilty scanning")
-    parser.add_argument("--recon-network", action="store_true", help="Enable network infrastructure analysis")
-    parser.add_argument("--recon-security", action="store_true", help="Enable security infrastructure analysis")
-    parser.add_argument("--recon-webapp", action="store_true", help="Enable web application analysis")
-    parser.add_argument("--recon-infrastructure", action="store_true", help="Enable infrastructure relationship mapping")
-    parser.add_argument("--recon-misc", action="store_true", help="Enable miscellaneous analysis")
-    parser.add_argument("--recon-all", action="store_true", help="Enable all reconnaissance modules")
+    recon_opt = parser.add_argument_group('Reconnaissance Modules', 'Select Reconnaissance module(s) (requires `--recon-only` flag)')
+    recon_opt.add_argument("--recon-only", action="store_true", help="Perform recon only, skip vulnerabilty scanning")
+    recon_opt.add_argument("--recon-network", action="store_true", help="Enable network infrastructure analysis")
+    recon_opt.add_argument("--recon-security", action="store_true", help="Enable security infrastructure analysis")
+    recon_opt.add_argument("--recon-webapp", action="store_true", help="Enable web application analysis")
+    recon_opt.add_argument("--recon-infrastructure", action="store_true", help="Enable infrastructure relationship mapping")
+    recon_opt.add_argument("--recon-misc", action="store_true", help="Enable miscellaneous analysis")
+    recon_opt.add_argument("--recon-all", action="store_true", help="Enable all reconnaissance modules")
 
      # Recon sub-option toggles
     # Network analysis options
-    parser.add_argument("--no-advanced-port-scan", action="store_true", help="Skip portscan during advanced recon")
-    parser.add_argument("--no-waf-detect", action="store_true", help="Skip firewall detection")
-    parser.add_argument("--no-detect-load-balancers", action="store_true", help="Skip check for load balancers")
-    parser.add_argument("--no-service-detection", action="store_true", help="Skip service detection on open ports")
-    parser.add_argument("--no-os-detection", action="store_true", help="Skip target OS detection")
-    parser.add_argument("--no-script-scan", action="store_true", help="Skip nmap script scan")
+    net_recon_opt = parser.add_argument_group('Network Recon Options', 'Fine-tune network recon (requires `--recon-network` flag)')
+    net_recon_opt.add_argument("--no-advanced-port-scan", action="store_true", help="Skip portscan during advanced recon")
+    net_recon_opt.add_argument("--no-waf-detect", action="store_true", help="Skip firewall detection")
+    net_recon_opt.add_argument("--no-detect-load-balancers", action="store_true", help="Skip check for load balancers")
+    net_recon_opt.add_argument("--no-service-detection", action="store_true", help="Skip service detection on open ports")
+    net_recon_opt.add_argument("--no-os-detection", action="store_true", help="Skip target OS detection")
+    net_recon_opt.add_argument("--port-range", default="1-1000", help="Range of ports to scan")
+    net_recon_opt.add_argument("--no-script-scan", action="store_true", help="Skip nmap script scan")
+
     # Web application analysis options
-    parser.add_argument("--no-content-discovery", action="store_true", help="Skip content discovery")
-    parser.add_argument("--no-js-analysis", action="store_true", help="Skip javascript content analysis")
-    parser.add_argument("--dir-enum", action="store_true", help="List app directories")
+    web_recon_opt = parser.add_argument_group('WebApp Recon Options', 'Fine-tune Webapp recon (requires `--recon-webapp` flag)')
+    web_recon_opt.add_argument("--no-content-discovery", action="store_true", help="Skip content discovery")
+    web_recon_opt.add_argument("--no-js-analysis", action="store_true", help="Skip javascript content analysis")
+    web_recon_opt.add_argument("--dir-enum", action="store_true", help="List app directories")
+
     # Infrastructure mapping options
-    parser.add_argument("--no-subdomain-enum", action="store_true", help="Skip check for sub-domains")
-    parser.add_argument("--no-cloud-mapping", action="store_true", help="Skip cloud infrastructure mappng")
-    parser.add_argument("--no-dns-bruteforce", action="store_true", help="Skip DNS bruteforce")
+    infra_recon_opt = parser.add_argument_group('Infrastructure Mapping Options', 'Fine-tune infrastructure recon (requires `--recon-infrastructure` flag)')
+    infra_recon_opt.add_argument("--no-subdomain-enum", action="store_true", help="Skip check for sub-domains")
+    infra_recon_opt.add_argument("--no-cloud-mapping", action="store_true", help="Skip cloud infrastructure mappng")
+    infra_recon_opt.add_argument("--no-dns-bruteforce", action="store_true", help="Skip DNS bruteforce")
+
     # Security analysis options
-    parser.add_argument("--no-ssl-analysis", action="store_true", help="Skip ssl security config analysis")
-    parser.add_argument("--no-security-headers", action="store_true", help="Skip security header config analysis")
+    sec_recon_opt = parser.add_argument_group('Security Recon Options', 'Fine-tune security recon (requires `--recon-security` flag)')
+    sec_recon_opt.add_argument("--no-ssl-analysis", action="store_true", help="Skip ssl security config analysis")
+    sec_recon_opt.add_argument("--no-security-headers", action="store_true", help="Skip security header config analysis")
+
     # Misc options
-    parser.add_argument("--no-error-analysis", action="store_true", help="Skip error codes analysis")
-    parser.add_argument("--no-cache-analysis", action="store_true", help="Skip cache config analysis")
-    parser.add_argument("--no-debug-mode-check", action="store_true", help="Skip check if debug mode being enabled")
-    parser.add_argument("--no-check-dev-artifacts", action="store_true", help="Skip check for dev artifacts")
-    parser.add_argument("--no-backend-tests", action="store_true", help="Skip backend tests")
+    misc_recon_opt = parser.add_argument_group('Miscellaneous Recon Options', 'Fine-tune miscellaneous recon (requires `--recon-misc` flag)')
+    misc_recon_opt.add_argument("--no-error-analysis", action="store_true", help="Skip error codes analysis")
+    misc_recon_opt.add_argument("--no-cache-analysis", action="store_true", help="Skip cache config analysis")
+    misc_recon_opt.add_argument("--no-debug-mode-check", action="store_true", help="Skip check if debug mode being enabled")
+    misc_recon_opt.add_argument("--no-check-dev-artifacts", action="store_true", help="Skip check for dev artifacts")
+    misc_recon_opt.add_argument("--no-backend-tests", action="store_true", help="Skip backend tests")
     
     # Output options
-    parser.add_argument("--output-dir", default="scan_results", help="Output directory for reports")
-    parser.add_argument("--no-html", action="store_true", help="Skip HTML report generation")
-    parser.add_argument("--no-pdf", action="store_true", help="Skip PDF report generation")
-    parser.add_argument("--no-json", action="store_true", help="Skip JSON report generation")
-    parser.add_argument("--excel", action="store_true", help="Generate Excel report ")
+    output_put = parser.add_argument_group('Output Options', 'Configure report generation and storage')
+    output_put.add_argument("--output-dir", default="scan_results", help="Output directory for reports")
+    output_put.add_argument("--no-html", action="store_true", help="Skip HTML report generation")
+    output_put.add_argument("--no-pdf", action="store_true", help="Skip PDF report generation")
+    output_put.add_argument("--no-json", action="store_true", help="Skip JSON report generation")
+    output_put.add_argument("--excel", action="store_true", help="Generate Excel report ")
     
     # Database options
-    parser.add_argument("--use-db", action="store_true", help="Store results in SQLite database")
-    parser.add_argument("--db-path", default="vulnradar.db", help="Path to SQLite database")
+    db_opt = parser.add_argument_group('Database Options', 'Configure database storage')
+    db_opt.add_argument("--use-db", action="store_true", help="Store results in SQLite database")
+    db_opt.add_argument("--db-path", default="vulnradar.db", help="Path to SQLite database")
     
     # Cache options
-    parser.add_argument("--cache-dir", default="cache", help="Directory for caching results")
-    parser.add_argument("--cache-ttl", type=int, default=3600, help="Cache time-to-live in seconds")
-    parser.add_argument("--no-cache", action="store_true", help="Disable result caching")
-    parser.add_argument("--clear-cache", action="store_true", help="Clear cache before scanning")
+    cache_opt = parser.add_argument_group('Cache Options', 'Configure result caching')
+    cache_opt.add_argument("--cache-dir", default="cache", help="Directory for caching results")
+    cache_opt.add_argument("--cache-ttl", type=int, default=3600, help="Cache time-to-live in seconds")
+    cache_opt.add_argument("--no-cache", action="store_true", help="Disable result caching")
+    cache_opt.add_argument("--clear-cache", action="store_true", help="Clear cache before scanning")
     args = parser.parse_args()
 
-    if args.url is None:
+    if args.url is None and not args.gui:
         show_usage_examples()
         sys.exit(0)
 
@@ -149,16 +164,16 @@ def show_usage_examples():
 
             {Fore.GREEN}Skip Vulnerability Scanning (Recon Only):{Style.RESET_ALL}
                 python -m vulnradar https://example.com \\
-                    --advanced-recon-only 
+                    --recon-only 
             
             {Fore.GREEN}Specific Reconnaissance Modules:{Style.RESET_ALL}
                 python -m vulnradar https://example.com \\
-                    --advanced-recon-only \\
+                    --recon-only \\
                     --recon-network --recon-security
 
             {Fore.GREEN}All Reconnaissance Modules:{Style.RESET_ALL}
                 python -m vulnradar https://example.com \\
-                    --advanced-recon-only --recon-all --clear-cache --cache-dir ./recon_cache
+                    --recon-only --recon-all --clear-cache --cache-dir ./recon_cache
 
             {Fore.YELLOW}ADVANCED OPTIONS:{Style.RESET_ALL}
 
@@ -187,7 +202,7 @@ def launch_gui(prefill_url=None):
     """Launch the GUI application"""
     try:
         import tkinter as tk
-        from gui import VulnRadarGUI
+        from .gui import VulnRadarGUI
         
         root = tk.Tk()
         app = VulnRadarGUI(root)
@@ -233,7 +248,7 @@ def main():
         "max_crawl_pages":args.max_crawl_pages,
         "port_scan": args.port_scan,
         # Recon options
-        "advanced_recon_only": args.advanced_recon_only,
+        "recon_only": args.recon_only,
         "recon_network": args.recon_network,
         "recon_security": args.recon_security,
         "recon_webapp": args.recon_webapp,
@@ -255,6 +270,7 @@ def main():
         "service_detection": not args.no_service_detection,
         "os_detection": not args.no_os_detection,
         "script_scan": not args.no_script_scan,
+        "port_range": args.port_range,
         # Web application analysis options
         "content_discovery": not args.no_content_discovery,
         "js_analysis": not args.no_js_analysis,

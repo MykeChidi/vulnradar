@@ -111,26 +111,29 @@ class VulnRadar:
             logger.info(f"{Fore.YELLOW}Caching disabled{Style.RESET_ALL}")
     
     def display_banner(self):
-        """Modern styled banner with colors."""
-        RED = Fore.RED
-        GREEN = Fore.GREEN
-        YELLOW = Fore.YELLOW
-        CYAN = Fore.CYAN
+        """Show modern styled banner with colors."""
+        R = Fore.RED
+        G = Fore.GREEN
+        Y = Fore.YELLOW
+        C = Fore.CYAN
+        W = Fore.WHITE
+        # Gradient-like effect using different colors
         print(f"""
-            {RED}╔{'═'*74}╗
-            {RED}║{' '*74}║
-            {RED}║  {GREEN}{Style.DIM}██╗   ██╗██╗   ██╗██╗     ███╗   ██╗███████╗ ██████╗ █████╗ ███╗   ██╗{RED}  ║
-            {RED}║  {GREEN}{Style.DIM}██║   ██║██║   ██║██║     ████╗  ██║██╔════╝██╔════╝██╔══██╗████╗  ██║{RED}  ║
-            {RED}║  {YELLOW}{Style.DIM}██║   ██║██║   ██║██║     ██╔██╗ ██║███████╗██║     ███████║██╔██╗ ██║{RED}  ║
-            {RED}║  {YELLOW}{Style.DIM}╚██╗ ██╔╝██║   ██║██║     ██║╚██╗██║╚════██║██║     ██╔══██║██║╚██╗██║{RED}  ║
-            {RED}║  {CYAN}{Style.DIM} ╚████╔╝ ╚██████╔╝███████╗██║ ╚████║███████║╚██████╗██║  ██║██║ ╚████║{RED}  ║
-            {RED}║  {CYAN}{Style.DIM}  ╚═══╝   ╚═════╝ ╚══════╝╚═╝  ╚═══╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝{RED}  ║
-            {RED}║{' '*74}║
-            {RED}║  {Fore.WHITE}{Style.BRIGHT}{' '*16}Web Security & Vulnerability Scanner{Style.RESET_ALL}{' '*20}{RED}║
-            {RED}║  {Fore.MAGENTA}{' '*25}v1.0.0{Style.RESET_ALL}{' '*40}{Fore.RED} ║
-            {RED}║{' '*74}║
-            {RED}╚{'═'*74}╝{Style.RESET_ALL}\n
-        """)
+            {R}╔{'═'*79}╗
+            {R}║{' '*79}║
+            {R}║  {G}██╗   ██╗██╗   ██╗██╗     ███╗   ██╗██████╗  █████╗ ██████╗  █████╗ ██████╗{R}  ║
+            {R}║  {G}██║   ██║██║   ██║██║     ████╗  ██║██╔══██╗██╔══██╗██╔══██╗██╔══██╗██╔══██╗{R} ║
+            {R}║  {Y}██║   ██║██║   ██║██║     ██╔██╗ ██║██████╔╝███████║██║  ██║███████║██████╔╝{R} ║
+            {R}║  {Y}╚██╗ ██╔╝██║   ██║██║     ██║╚██╗██║██╔══██╗██╔══██║██║  ██║██╔══██║██╔══██╗{R} ║
+            {R}║   {C}╚████╔╝ ╚██████╔╝███████╗██║ ╚████║██║  ██║██║  ██║██████╔╝██║  ██║██║  ██║{R} ║
+            {R}║    {C}╚═══╝   ╚═════╝ ╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝{R} ║
+            {R}║{' '*79}║
+            {R}║{W}{Style.BRIGHT}{' '*19}⚡ Web Security & Vulnerability Scanner ⚡{C}{' '*18}{R}║
+            {R}║{' '*79}║
+            {R}║{Y}{' '*24}[{W}*{Y}]{W} Scan {Y}|{W} Detect {Y}|{W} Report {Y}[{W}*{Y}]{' '*25}{R}║
+            {R}║{' '*79}║
+            {R}╚{'═'*79}╝{Style.RESET_ALL}
+            """)
 
     async def scan(self) -> Dict:
         """
@@ -153,7 +156,7 @@ class VulnRadar:
         await self.reconnaissance()
 
         # If advanced recon only mode is enabled, skip vulnerability scanning
-        if self.options.get("advanced_recon_only", False):
+        if self.options.get("recon_only", False):
             logger.info(f"{Fore.YELLOW}Running in advanced reconnaissance only mode{Style.RESET_ALL}")
             await self.advanced_recon()
             return
@@ -616,7 +619,7 @@ class VulnRadar:
     
     def generate_reports(self) -> None:
         """Generate scan reports in different formats."""
-        is_recon_only = self.options.get("advanced_recon_only", False)
+        is_recon_only = self.options.get("recon_only", False)
         
         report_title = "Reconnaissance Report" if is_recon_only else "Vulnerability Scan Report"
         report_gen = ReportGenerator(

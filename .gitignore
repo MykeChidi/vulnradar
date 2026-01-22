@@ -13,3 +13,4 @@ tests/
 pytest.ini
 Makefile
 .coverage
+tests_runner.py

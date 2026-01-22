@@ -9,6 +9,8 @@ import queue
 from datetime import datetime
 
 from .core import VulnRadar
+from .utils.gui_icon import set_window_icon
+
 
 class ModernButton(tk.Canvas):
     """Custom modern button with hover effects"""
@@ -72,6 +74,7 @@ class VulnRadarGUI:
         # Create main layout
         self.create_header()
         self.create_main_container()
+        set_window_icon(self.root)
         
         # Initialize variables
         self.scan_running = False

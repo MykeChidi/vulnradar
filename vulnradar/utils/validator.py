@@ -1,4 +1,4 @@
-# vulnradar/utils/validator.py
+# vulnradar/utils/validator.py - Input validation & sanitization
 
 import re
 import ipaddress
@@ -134,28 +134,36 @@ class Validator:
         """Sanitize file path for safe dir creation."""
         if not path or not isinstance(path, str):
             raise ValueError("Path must be a non-empty string")
-        
-        # Resolve to absolute path
+
+        # Disallow obvious dangerous input early
+        if '..' in path or '~' in path:
+            raise ValueError("Path contains invalid patterns")
+
+        # Determine project root (parent of the vulnradar package)
         try:
-            resolved_path = Path(path).resolve()
+            project_root = Path(__file__).resolve().parents[2]
+        except Exception:
+            # Fallback to current working directory if resolution fails
+            project_root = Path.cwd()
+
+        # Resolve relative paths against the project root by default 
+        try:
+            p = Path(path)
+            if not p.is_absolute():
+                resolved_path = (project_root / p).resolve()
+            else:
+                resolved_path = p.resolve()
         except Exception as e:
             raise ValueError(f"Invalid path: {e}")
-        
-        # If base directory specified, ensure path is within it
+
+        # If base_dir specified, ensure path is within it
         if base_dir:
             try:
                 base = Path(base_dir).resolve()
-                # Check if resolved path starts with base directory
                 resolved_path.relative_to(base)
             except (ValueError, RuntimeError):
                 raise ValueError(f"Path {path} is outside allowed directory")
-        
-        # Check for dangerous patterns
-        path_str = str(resolved_path)
-        dangerous_patterns = ['..', '~']
-        if any(pattern in str(path_str) for pattern in dangerous_patterns):
-            raise ValueError("Path contains invalid patterns")
-        
+
         return resolved_path
     
     @staticmethod

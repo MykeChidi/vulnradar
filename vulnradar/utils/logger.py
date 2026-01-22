@@ -35,8 +35,8 @@ def setup_logger(name: str, level: int = logging.INFO, log_to_file: bool = True,
 
         # Add file handler if requested
         if log_to_file:
-            # Create scan_results directory if it doesn't exist
-            log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scan_results')
+            # Create scan_results directory 
+            log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'scan_results')
             os.makedirs(log_dir, exist_ok=True)
             
             # Create timestamp for the current scan

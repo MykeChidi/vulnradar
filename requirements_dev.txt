@@ -1,0 +1,34 @@
+# Testing framework
+pytest
+pytest-asyncio
+pytest-cov
+pytest-xdist
+pytest-timeout
+pytest-mock
+
+# Mocking and fixtures
+responses
+aioresponses
+faker
+
+# Code quality
+flake8
+black
+isort
+mypy
+pylint
+
+# Coverage reporting
+coverage[toml]
+coverage-badge
+
+# Test data generation
+factory-boy
+mimesis
+
+# Performance testing
+pytest-benchmark
+
+# Security testing
+bandit
+safety

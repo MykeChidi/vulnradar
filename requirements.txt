@@ -2,6 +2,7 @@
 aiohttp==3.11.18
 beautifulsoup4==4.12.3
 colorama==0.4.6
+cryptography==44.0.0
 dnspython==2.7.0
 jinja2==3.1.6
 pandas==2.2.3
@@ -13,38 +14,3 @@ selenium==4.32.0
 sqlalchemy==2.0.41
 tqdm==4.67.1
 wafw00f==2.3.1
-
-# Testing framework
-pytest
-pytest-asyncio
-pytest-cov
-pytest-xdist
-pytest-timeout
-pytest-mock
-
-# Mocking and fixtures
-responses
-aioresponses
-faker
-
-# Code quality
-flake8
-black
-isort
-mypy
-pylint
-
-# Coverage reporting
-coverage[toml]
-coverage-badge
-
-# Test data generation
-factory-boy
-mimesis
-
-# Performance testing
-pytest-benchmark
-
-# Security testing
-bandit
-safety

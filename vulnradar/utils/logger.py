@@ -1,7 +1,7 @@
 # vulnradar/utils/logger.py - Logging Scan Output
 
 import logging
-import os
+from pathlib import Path
 import sys
 from datetime import datetime
 from colorama import Fore, Style
@@ -36,21 +36,21 @@ def setup_logger(name: str, level: int = logging.INFO, log_to_file: bool = True,
         # Add file handler if requested
         if log_to_file:
             # Create scan_results directory 
-            log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'scan_results')
-            os.makedirs(log_dir, exist_ok=True)
+            log_dir = Path(__file__).parent.parent.parent / 'scan_results'
+            log_dir.mkdir(exist_ok=True)
             
             # Create timestamp for the current scan
             timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
             
             if scanner_specific:
                 # For scanner-specific logs, create a subdirectory for the current scan
-                scan_dir = os.path.join(log_dir, f'scan_{timestamp}')
-                os.makedirs(scan_dir, exist_ok=True)
+                scan_dir = log_dir / f'scan_{timestamp}'
+                scan_dir.mkdir(exist_ok=True)
                 # Create scanner-specific log file
-                log_file = os.path.join(scan_dir, f'{name.lower()}.log')
+                log_file = scan_dir / f'{name.lower()}.log'
             else:
                 # Create main scan log file
-                log_file = os.path.join(log_dir, f'scan_{timestamp}.log')
+                log_file = log_dir / f'scan_{timestamp}.log'
             
             file_handler = logging.FileHandler(log_file)
             file_handler.setLevel(level)

@@ -6,6 +6,9 @@ import socket
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
+from .error_handler import get_global_error_handler, handle_errors
+
+error_handler = get_global_error_handler()
 
 
 class Validator:
@@ -30,6 +33,11 @@ class Validator:
     ]
     
     @staticmethod
+    @handle_errors(
+        error_handler=error_handler,
+        user_message="URL validation failed",
+        return_on_error=""
+    )
     def validate_url(url: str) -> str:
         """Validate and sanitize URL input."""
         if not url or not isinstance(url, str):
@@ -106,6 +114,11 @@ class Validator:
         return False
     
     @staticmethod
+    @handle_errors(
+        error_handler=error_handler,
+        user_message="Header validation failed",
+        return_on_error=""
+    )
     def validate_header_value(value: str, name: str) -> str:
         """Validate HTTP header value to prevent injection."""
         if not isinstance(value, str):
@@ -130,6 +143,11 @@ class Validator:
         return value
     
     @staticmethod
+    @handle_errors(
+        error_handler=error_handler,
+        user_message="File path sanitization failed",
+        return_on_error=None
+    )
     def sanitize_file_path(path: str, base_dir: Optional[str] = None) -> Path:
         """Sanitize file path for safe dir creation."""
         if not path or not isinstance(path, str):
@@ -167,6 +185,11 @@ class Validator:
         return resolved_path
     
     @staticmethod
+    @handle_errors(
+        error_handler=error_handler,
+        user_message="Cache key validation failed",
+        return_on_error=""
+    )
     def validate_cache_key(key: str) -> str:
         """Validate cache key format."""
         if not key or not isinstance(key, str):
@@ -181,6 +204,11 @@ class Validator:
         return key
     
     @staticmethod
+    @handle_errors(
+        error_handler=error_handler,
+        user_message="Filename sanitization failed",
+        return_on_error="output"
+    )
     def sanitize_filename(filename: str, max_length: int = 200) -> str:
         """Sanitize filename for safe file creation."""
         import unicodedata

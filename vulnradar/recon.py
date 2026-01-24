@@ -6,12 +6,15 @@ from urllib.parse import urlparse
 from pathlib import Path
 from .utils.logger import setup_logger
 from .utils.cache import ScanCache
+from .utils.error_handler import get_global_error_handler, handle_async_errors
 from .reconn.network import NetworkInfrastructureAnalyzer
 from .reconn.security import SecurityInfrastructureAnalyzer
 from .reconn.webapp import WebApplicationAnalyzer
 from .reconn.infrastructure import InfrastructureRelationshipMapper
 from .reconn.misc import MiscellaneousAnalyzer
 from .reconn._target import ReconTarget
+
+error_handler = get_global_error_handler()
 
 
 class ReconManager:
@@ -61,7 +64,12 @@ class ReconManager:
             is_https=parsed.scheme == "https",
             port=parsed.port or (443 if parsed.scheme == "https" else 80)
         )
-        
+    
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="Reconnaissance analysis encountered an error",
+        return_on_error={}
+    )
     async def run_reconnaissance(self) -> Dict:
         """
         Run all reconnaissance modules and return combined results.

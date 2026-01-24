@@ -4,6 +4,10 @@ import sys
 from pathlib import Path
 from colorama import Fore, Style
 from .core import VulnRadar
+from .utils.error_handler import get_global_error_handler, handle_errors
+
+# Setup error handler
+error_handler = get_global_error_handler()
 
 
 def parse_arguments():
@@ -198,33 +202,38 @@ def show_usage_examples():
             {Fore.CYAN}For detailed documentation, visit: https://github.com/MykeChidi/vulnradar{Style.RESET_ALL}
             """)
 
+@handle_errors(
+    error_handler=error_handler,
+    user_message="Failed to launch GUI. Please check your system and try again.",
+    return_on_error=None
+)
 def launch_gui(prefill_url=None):
     """Launch the GUI application"""
-    try:
-        import tkinter as tk
-        from .gui import VulnRadarGUI
-        
-        root = tk.Tk()
-        app = VulnRadarGUI(root)
-        
-        if prefill_url:
-            app.url_entry.delete(0, tk.END)
-            app.url_entry.insert(0, prefill_url)
+    import tkinter as tk
+    from .gui import VulnRadarGUI
+    
+    root = tk.Tk()
+    app = VulnRadarGUI(root)
+    
+    if prefill_url:
+        app.url_entry.delete(0, tk.END)
+        app.url_entry.insert(0, prefill_url)
 
-        # Center window on screen
-        root.update_idletasks()
-        width = root.winfo_width()
-        height = root.winfo_height()
-        x = (root.winfo_screenwidth() // 2) - (width // 2)
-        y = (root.winfo_screenheight() // 2) - (height // 2)
-        root.geometry(f'{width}x{height}+{x}+{y}')
-        
-        root.mainloop()
-    except Exception as e:
-        print(f"{Fore.RED}Error: Unable to launch GUI{Style.RESET_ALL}")
-        print(f"Error details: {e}")
-        sys.exit(1)
+    # Center window on screen
+    root.update_idletasks()
+    width = root.winfo_width()
+    height = root.winfo_height()
+    x = (root.winfo_screenwidth() // 2) - (width // 2)
+    y = (root.winfo_screenheight() // 2) - (height // 2)
+    root.geometry(f'{width}x{height}+{x}+{y}')
+    
+    root.mainloop()
 
+@handle_errors(
+    error_handler=error_handler,
+    user_message="VulnRadar scan failed. Please check your configuration and try again.",
+    return_on_error=1
+)
 def main():
     """Main Vulnradar function."""
     # Parse arguments

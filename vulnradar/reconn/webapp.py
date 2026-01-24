@@ -8,7 +8,10 @@ from bs4 import BeautifulSoup
 from ..utils.logger import setup_logger
 from ..utils.rate_limit import RateLimiter
 from ..utils.cache import ScanCache
+from ..utils.error_handler import get_global_error_handler, handle_async_errors, NetworkError, ParseError
 from ._target import ReconTarget
+
+error_handler = get_global_error_handler()
 
 
 class WebApplicationAnalyzer:
@@ -20,7 +23,7 @@ class WebApplicationAnalyzer:
     def __init__(self, target: ReconTarget, options: Dict):
         self.target = target
         self.options = options
-        self.logger = setup_logger("webapp_recon", scanner_specific=True)
+        self.logger = setup_logger("webapp_recon", file_specific=True)
         self.rate_limiter = RateLimiter()
         
         # Initialize cache
@@ -30,6 +33,11 @@ class WebApplicationAnalyzer:
         else:
             self._cache = None
 
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="Web application reconnaissance analysis encountered an error",
+        return_on_error={}
+    )
     async def analyze(self) -> Dict:
         """
         Perform comprehensive web application analysis.
@@ -81,7 +89,8 @@ class WebApplicationAnalyzer:
                         # Analyze HTML content
                         try:
                             soup = BeautifulSoup(html, 'lxml')
-                        except:
+                        except Exception as parse_err:
+                            self.logger.debug(f"lxml parser failed, falling back to html.parser: {str(parse_err)}")
                             soup = BeautifulSoup(html, 'html.parser')
                         tech_results.update(await self._analyze_html(soup))
                         
@@ -90,10 +99,21 @@ class WebApplicationAnalyzer:
                         
                         return tech_results
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    error_msg = f"Technology detection failed for {self.target.url}: {str(e)}"
+                    self.logger.error(error_msg)
+                    error_handler.handle_error(
+                        NetworkError(error_msg),
+                        context={"url": self.target.url, "error_type": "tech_detection_failure"}
+                    )
                     await self.rate_limiter.report_failure() 
                     raise    
         except Exception as e:
-            self.logger.error(f"Technology detection failed: {str(e)}")
+            error_msg = f"Technology detection failed for {self.target.url}: {str(e)}"
+            self.logger.error(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"url": self.target.url, "error_type": "unexpected_tech_detection_error"}
+            )
             return {"error": str(e)}
             
     async def _analyze_headers(self, headers: Dict) -> Dict:

@@ -13,7 +13,10 @@ from bs4 import BeautifulSoup
 from ..utils.logger import setup_logger
 from ..utils.rate_limit import RateLimiter
 from ..utils.cache import ScanCache
+from ..utils.error_handler import get_global_error_handler, handle_async_errors, NetworkError
 from ._target import ReconTarget
+
+error_handler = get_global_error_handler()
 
 
 class InfrastructureRelationshipMapper:
@@ -25,7 +28,7 @@ class InfrastructureRelationshipMapper:
     def __init__(self, target: ReconTarget, options: Dict):
         self.target = target
         self.options = options
-        self.logger = setup_logger("infra_mapper", scanner_specific=True)
+        self.logger = setup_logger("infra_mapper", file_specific=True)
         self.rate_limiter = RateLimiter()
         # Initialize cache
         if not options.get("no_cache", False):
@@ -34,6 +37,11 @@ class InfrastructureRelationshipMapper:
         else:
             self._cache = None
 
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="Infrastructure reconnaissance analysis encountered an error",
+        return_on_error={}
+    )
     async def analyze(self) -> Dict:
         """
         Perform comprehensive infrastructure relationship mapping.
@@ -146,7 +154,12 @@ class InfrastructureRelationshipMapper:
                                 self.logger.info(f"Found {len(domains)} subdomains from {source['name']}")
                                 await self.rate_limiter.report_success()
                             except json.JSONDecodeError as e:
-                                self.logger.warning(f"Failed to parse {source['name']} response: {str(e)}")
+                                warning_msg = f"Failed to parse {source['name']} response: {str(e)}"
+                                self.logger.warning(warning_msg)
+                                error_handler.handle_error(
+                                    NetworkError(warning_msg),
+                                    context={"source": source['name'], "error_type": "json_parse_error"}
+                                )
                         elif response.status == 429:
                             self.logger.warning(f"Rate limited by {source['name']}")
                             await self.rate_limiter.report_failure(is_rate_limit=True)
@@ -154,11 +167,26 @@ class InfrastructureRelationshipMapper:
                             self.logger.warning(f"{source['name']} returned status {response.status}")
                             
             except asyncio.TimeoutError:
-                self.logger.warning(f"Timeout querying {source['name']}")
+                warning_msg = f"Timeout querying {source['name']} for subdomains"
+                self.logger.warning(warning_msg)
+                error_handler.handle_error(
+                    NetworkError(warning_msg),
+                    context={"source": source['name'], "error_type": "subdomain_query_timeout", "retryable": True}
+                )
             except aiohttp.ClientError as e:
-                self.logger.warning(f"Error querying {source['name']}: {str(e)}")
+                warning_msg = f"HTTP error querying {source['name']}: {str(e)}"
+                self.logger.warning(warning_msg)
+                error_handler.handle_error(
+                    NetworkError(warning_msg),
+                    context={"source": source['name'], "error_type": "http_error"}
+                )
             except Exception as e:
-                self.logger.error(f"Unexpected error with {source['name']}: {str(e)}")
+                error_msg = f"Unexpected error with {source['name']}: {str(e)}"
+                self.logger.error(error_msg)
+                error_handler.handle_error(
+                    NetworkError(error_msg),
+                    context={"source": source['name'], "error_type": "unexpected_subdomain_error"}
+                )
         
         # Filter to only return valid subdomains
         valid_subdomains = set()

@@ -11,7 +11,10 @@ from pathlib import Path
 from ..utils.logger import setup_logger
 from ..utils.rate_limit import RateLimiter
 from ..utils.cache import ScanCache
+from ..utils.error_handler import get_global_error_handler, handle_async_errors, NetworkError
 from ._target import ReconTarget
+
+error_handler = get_global_error_handler()
 
 
 class NetworkInfrastructureAnalyzer:
@@ -30,7 +33,7 @@ class NetworkInfrastructureAnalyzer:
         """
         self.target = target
         self.options = options
-        self.logger = setup_logger("network_recon", scanner_specific=True)
+        self.logger = setup_logger("network_recon", file_specific=True)
         self.dns_resolver = dns.resolver.Resolver()
         self.dns_resolver.timeout = 5
         self.dns_resolver.lifetime = 10
@@ -43,6 +46,11 @@ class NetworkInfrastructureAnalyzer:
         else:
             self._cache = None
 
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="Network reconnaissance analysis encountered an error",
+        return_on_error={}
+    )
     async def analyze(self) -> Dict:
         """
         Perform comprehensive network infrastructure analysis.
@@ -76,23 +84,48 @@ class NetworkInfrastructureAnalyzer:
         try:
             # Quick A record check to validate domain
             self.dns_resolver.resolve(self.target.hostname, 'A')
-        except dns.resolver.NXDOMAIN:
-            self.logger.error(f"Domain {self.target.hostname} does not exist")
-            return {"error": "domain_not_found", "message": f"Domain {self.target.hostname} does not exist"}
-        except dns.resolver.NoNameservers:
-            self.logger.error(f"No nameservers found for {self.target.hostname}")
+        except dns.resolver.NXDOMAIN as e:
+            error_msg = f"Domain {self.target.hostname} does not exist"
+            self.logger.error(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"hostname": self.target.hostname, "error_type": "domain_not_found"}
+            )
+            return {"error": "domain_not_found", "message": error_msg}
+        except dns.resolver.NoNameservers as e:
+            error_msg = f"No nameservers found for {self.target.hostname}"
+            self.logger.error(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"hostname": self.target.hostname, "error_type": "no_nameservers"}
+            )
             return {"error": "no_nameservers", "message": "No nameservers respond for this domain"}
-        except dns.resolver.Timeout:
-            self.logger.error(f"DNS timeout for {self.target.hostname}")
+        except dns.resolver.Timeout as e:
+            error_msg = f"DNS timeout for {self.target.hostname}"
+            self.logger.error(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"hostname": self.target.hostname, "error_type": "dns_timeout", "retryable": True}
+            )
             return {"error": "timeout", "message": "DNS query timed out", "retryable": True}
-        except dns.resolver.NoAnswer:
+        except dns.resolver.NoAnswer as e:
             self.logger.warning(f"No answer for {self.target.hostname}")
             return {"error": "no_answer", "message": "DNS query returned no answer"}
-        except dns.exception.DNSException as e:  # Catch DNS-specific errors
-            self.logger.error(f"DNS exception: {str(e)}")
+        except dns.exception.DNSException as e:
+            error_msg = f"DNS exception: {str(e)}"
+            self.logger.error(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"hostname": self.target.hostname, "error_type": "dns_exception"}
+            )
             return {"error": "dns_exception", "message": str(e)}
         except Exception as e:
-            self.logger.error(f"Uexpected DNS error: {str(e)}")
+            error_msg = f"Unexpected DNS error: {str(e)}"
+            self.logger.error(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"hostname": self.target.hostname, "error_type": "unexpected_dns_error"}
+            )
             return {"error": "unexpected", "message": str(e)}
         
         for record_type in record_types:
@@ -103,14 +136,25 @@ class NetworkInfrastructureAnalyzer:
             except dns.resolver.NoAnswer:
                 dns_results[record_type] = []
                 self.logger.debug(f"No {record_type} records for {self.target.hostname}")
-            except dns.resolver.NXDOMAIN:
-                self.logger.error(f"Domain {self.target.hostname} does not exist")
-                return {"error": "Domain does not exist"}
-            except dns.resolver.Timeout:
-                self.logger.warning(f"Timeout querying {record_type} records")
+            except dns.resolver.NXDOMAIN as e:
+                error_msg = f"Domain {self.target.hostname} does not exist during {record_type} lookup"
+                self.logger.error(error_msg)
+                error_handler.handle_error(
+                    NetworkError(error_msg),
+                    context={"hostname": self.target.hostname, "record_type": record_type, "error_type": "domain_not_found"}
+                )
+                return {"error": "domain_not_found", "message": f"Domain {self.target.hostname} does not exist"}
+            except dns.resolver.Timeout as e:
+                warning_msg = f"Timeout querying {record_type} records for {self.target.hostname}"
+                self.logger.warning(warning_msg)
                 dns_results[record_type] = {"error": "timeout", "retryable": True}
             except Exception as e:
-                self.logger.warning(f"DNS error querying {record_type}: {str(e)}")
+                warning_msg = f"DNS error querying {record_type}: {str(e)}"
+                self.logger.warning(warning_msg)
+                error_handler.handle_error(
+                    NetworkError(warning_msg),
+                    context={"hostname": self.target.hostname, "record_type": record_type, "error_type": "query_failed"}
+                )
                 dns_results[record_type] = {"error": "query_failed", "details": str(e)}
                 
                 
@@ -118,8 +162,13 @@ class NetworkInfrastructureAnalyzer:
         try:
             dns_results['dnssec'] = await self._check_dnssec()
         except Exception as e:
-           self.logger.exception(f"Unexpected error in DNSSEC check: {str(e)}")
-           dns_results['dnssec'] = {"error": "unexpected", "details": str(e)}
+            error_msg = f"DNSSEC check failed: {str(e)}"
+            self.logger.exception(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"hostname": self.target.hostname, "error_type": "dnssec_check_failed"}
+            )
+            dns_results['dnssec'] = {"error": "dnssec_check_failed", "details": str(e)}
             
         return dns_results
         
@@ -195,13 +244,28 @@ class NetworkInfrastructureAnalyzer:
             return port_results
             
         except nmap.PortScannerError as e:
-            self.logger.error(f"Nmap scan error: {str(e)}")
+            error_msg = f"Nmap scan error: {str(e)}"
+            self.logger.error(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"target_ip": self.target.ip, "error_type": "nmap_scan_error"}
+            )
             return {"error": "scan_failed", "message": str(e)}
         except KeyError as e:
-            self.logger.error(f"Error parsing scan results: {str(e)}")
+            error_msg = f"Error parsing port scan results: {str(e)}"
+            self.logger.error(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"target_ip": self.target.ip, "error_type": "parse_error", "key": str(e)}
+            )
             return {"error": "parse_error", "message": "Failed to parse nmap output"}
         except Exception as e:
-            self.logger.exception(f"Unexpected error during port scan: {str(e)}")
+            error_msg = f"Unexpected error during port scan: {str(e)}"
+            self.logger.exception(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"target_ip": self.target.ip, "error_type": "unexpected_port_scan_error"}
+            )
             return {"error": "unexpected", "message": str(e)}
     
     def _has_root_privileges(self) -> bool:

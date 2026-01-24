@@ -3,6 +3,10 @@
 from typing import Dict, List
 import aiohttp
 from .base import BaseScanner
+from ..utils.error_handler import get_global_error_handler, handle_async_errors, ScanError
+
+# Setup error handler
+error_handler = get_global_error_handler()
 
 
 class CSRFScanner(BaseScanner):
@@ -24,6 +28,11 @@ class CSRFScanner(BaseScanner):
             'X-CSRF-Token', 'X-CSRFToken', 'X-XSRF-Token', 'X-Requested-With'
         ]
     
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="CSRF scan encountered an error",
+        return_on_error=[]
+    )
     async def scan(self, url: str) -> List[Dict]:
         """
         Scan a URL for CSRF vulnerabilities.
@@ -49,7 +58,10 @@ class CSRFScanner(BaseScanner):
                 vulnerabilities.extend(csrf_findings)
                 
         except Exception as e:
-            self.logger.error(f"Error scanning '{url}' for CSRF: {e}")
+            error_handler.handle_error(
+                ScanError(f"Error scanning '{url}' for CSRF: {str(e)}", original_error=e),
+                context={"url": url, "scanner": "CSRF"}
+            )
             
         return vulnerabilities
     
@@ -150,7 +162,10 @@ class CSRFScanner(BaseScanner):
                             }
                             
         except Exception as e:
-            self.logger.error(f"Error testing missing CSRF token: {e}")
+            error_handler.handle_error(
+                ScanError(f"Error testing missing CSRF token: {str(e)}", original_error=e),
+                context={"url": url, "scanner": "CSRF"}
+            )
             
         return None
     
@@ -203,7 +218,10 @@ class CSRFScanner(BaseScanner):
                 return vulnerability
                 
         except Exception as e:
-            self.logger.error(f"Error testing CSRF token validation: {e}")
+            error_handler.handle_error(
+                ScanError(f"Error testing CSRF token validation: {str(e)}", original_error=e),
+                context={"url": url, "scanner": "CSRF"}
+            )
             
         return None
     
@@ -250,7 +268,10 @@ class CSRFScanner(BaseScanner):
                             }
                             
         except Exception as e:
-            self.logger.error(f"Error testing referrer bypass: {e}")
+            error_handler.handle_error(
+                ScanError(f"Error testing referrer bypass: {str(e)}", original_error=e),
+                context={"url": url, "scanner": "CSRF"}
+            )
             
         return None
     
@@ -290,10 +311,18 @@ class CSRFScanner(BaseScanner):
                             }
                             
         except Exception as e:
-            self.logger.error(f"Error submitting CSRF test: {e}")
+            error_handler.handle_error(
+                ScanError(f"Error submitting CSRF test: {str(e)}", original_error=e),
+                context={"url": url, "scanner": "CSRF"}
+            )
             
         return None
     
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="CSRF validation encountered an error",
+        return_on_error=False
+    )
     async def validate(self, url: str, payload: str, evidence: str) -> bool:
         """
         Validate a CSRF vulnerability finding.
@@ -327,6 +356,9 @@ class CSRFScanner(BaseScanner):
                                 return response.status in [200, 201, 302, 303]
                                 
         except Exception as e:
-            self.logger.error(f"Error validating CSRF vulnerability in '{url}': {e}")
+            error_handler.handle_error(
+                ScanError(f"Error validating CSRF vulnerability in '{url}': {str(e)}", original_error=e),
+                context={"url": url, "scanner": "CSRF"}
+            )
             
         return False

@@ -29,6 +29,8 @@ from .utils.logger import setup_logger
 from .utils.reporter import Report, ReportGenerator
 from .utils.cache import ScanCache
 from .utils.validator import Validator
+from .utils.error_handler import (get_global_error_handler, handle_async_errors,
+    ValidationError, NetworkError, ScanError)
 from .recon import ReconManager
 
 # Initialize colorama
@@ -36,6 +38,9 @@ colorama.init()
 
 # Setup logger
 logger = setup_logger("vulnradar")
+
+# Setup error handler
+error_handler = get_global_error_handler()
 
 
 class VulnRadar:
@@ -63,7 +68,10 @@ class VulnRadar:
         try:
             Validator.validate_url(self.target_url)
         except ValueError as err:
-            logger.error(f"Invalid target URL: {str(err)}")
+            error_handler.handle_error(
+                ValidationError(f"Invalid target URL: {str(err)}", original_error=err),
+                context={"target_url": self.target_url}
+            )
             raise
 
         # Headers for HTTP requests
@@ -135,6 +143,11 @@ class VulnRadar:
             {R}╚{'═'*79}╝{Style.RESET_ALL}
             """)
 
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="Scan execution failed. Please verify the target URL and try again.",
+        return_on_error={"error": True, "message": "Scan failed"}
+    )
     async def scan(self) -> Dict:
         """
         Execute the full vulnerability scan.
@@ -180,6 +193,11 @@ class VulnRadar:
         logger.info(f"{Fore.GREEN}Scan completed successfully.{Style.RESET_ALL}")
         return self.results
         
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="Target validation failed.",
+        return_on_error=False
+    )
     async def validate_target(self) -> bool:
         """
         Validate that the target URL is accessible.
@@ -195,7 +213,10 @@ class VulnRadar:
                 async with session.get(self.target_url, headers=self.headers, allow_redirects=False) as response:
                     return 200 <= response.status < 400
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            logger.error(f"Error validating target: {e}")
+            error_handler.handle_error(
+                NetworkError(f"Error validating target: {str(e)}", original_error=e),
+                context={"target_url": self.target_url}
+            )
             return False
         
     async def advanced_recon(self):
@@ -274,8 +295,11 @@ class VulnRadar:
             recon_manager.log_recon_findings(recon_results)
             
         except Exception as e:
-            logger.error(f"{Fore.RED}Reconnaissance failed: {str(e)}{Style.RESET_ALL}")
-            self.results["reconnaissance"]["error"] = str(e)
+            error_info = error_handler.handle_error(
+                ScanError(f"Reconnaissance failed: {str(e)}", original_error=e),
+                context={"target_url": self.target_url}
+            )
+            self.results["reconnaissance"]["error"] = error_info["message"]
 
         # Generate reports with recon data only
         self.generate_reports()
@@ -323,6 +347,8 @@ class VulnRadar:
         except dns.resolver.NXDOMAIN:
             logger.error(f"DNS lookup error: Domain {hostname} does not exist")
             self.results["reconnaissance"]["dns"] = {"error": "Domain does not exist"}
+        except dns.exception.DNSException as e:  # Catch DNS-specific errors
+            logger.error(f"DNS Error: {str(e)}")    
             return
             
         # Port scanning
@@ -366,8 +392,11 @@ class VulnRadar:
             else:
                 logger.info("No WAF detected")
         except Exception as e:
-            logger.error(f"WAF detection error: {e}")
-            self.results["reconnaissance"]["waf"] = {"error": str(e)}
+            error_info = error_handler.handle_error(
+                ScanError(f"WAF detection error: {str(e)}", original_error=e),
+                context={"target_url": self.target_url}
+            )
+            self.results["reconnaissance"]["waf"] = {"error": error_info["message"]}
     
     async def crawl_site(self) -> None:
         """Crawl the target site and identify endpoints."""
@@ -593,7 +622,11 @@ class VulnRadar:
                         validated.append(vuln)
                         
                 except Exception as e:
-                    logger.warning(f"Validation error for {vuln['type']} at {vuln['endpoint']}: {e}")
+
+                    error_handler.handle_error(
+                        ScanError(f"Validation error for {vuln['type']} at {vuln['endpoint']}: {str(e)}", original_error=e),
+                        context={"vulnerability": vuln}
+                    )
             else:
                 # If we don't have a validation method, include it anyway
                 validated.append(vuln)

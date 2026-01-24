@@ -4,11 +4,12 @@ from sqlalchemy import Column, Integer, String, Text, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
-from typing import List, Dict
 from .logger import setup_logger
+from .error_handler import get_global_error_handler, handle_errors, DatabaseError
 
 
 logger = setup_logger("Database", log_to_file=False)
+error_handler = get_global_error_handler()
 Base = declarative_base()
 
 class Vulnerability(Base):
@@ -42,6 +43,11 @@ class VulnradarDatabase:
         if hasattr(self, 'engine'):
             self.engine.dispose()
 
+    @handle_errors(
+        error_handler=error_handler,
+        user_message="Failed to store vulnerability in database",
+        return_on_error=None
+    )
     def add_vulnerability(
         self,
         *,
@@ -78,6 +84,10 @@ class VulnradarDatabase:
             session.commit()
         except Exception as e:
             session.rollback()
+            error_handler.handle_error(
+                DatabaseError(f"Failed to store vulnerability: {str(e)}", original_error=e),
+                context={"target": target, "vulnerability_type": vulnerability_type, "endpoint": endpoint}
+            )
             raise
         finally:
             session.close()

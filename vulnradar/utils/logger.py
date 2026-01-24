@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 from colorama import Fore, Style
 
-def setup_logger(name: str, level: int = logging.INFO, log_to_file: bool = True, scanner_specific: bool = False) -> logging.Logger:
+def setup_logger(name: str, level: int = logging.INFO, log_to_file: bool = True, file_specific: bool = False) -> logging.Logger:
     """
     Create a logger that prints colored output to stderr and optionally logs to a file.
     
@@ -42,7 +42,7 @@ def setup_logger(name: str, level: int = logging.INFO, log_to_file: bool = True,
             # Create timestamp for the current scan
             timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
             
-            if scanner_specific:
+            if file_specific:
                 # For scanner-specific logs, create a subdirectory for the current scan
                 scan_dir = log_dir / f'scan_{timestamp}'
                 scan_dir.mkdir(exist_ok=True)

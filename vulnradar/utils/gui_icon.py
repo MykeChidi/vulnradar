@@ -1,4 +1,5 @@
-# vulnradar/utils/gui_icon
+# vulnradar/utils/gui_icon - Custom Vulnradar icon for gui
+
 import platform
 from pathlib import Path
 from typing import Optional

@@ -10,6 +10,10 @@ import aiohttp
 
 from .base import BaseScanner
 from . import payloads
+from ..utils.error_handler import get_global_error_handler, handle_async_errors, ScanError
+
+# Setup error handler
+error_handler = get_global_error_handler()
 
 
 class CommandInjectionScanner(BaseScanner):
@@ -31,6 +35,11 @@ class CommandInjectionScanner(BaseScanner):
         # Parameters commonly vulnerable to command injection
         self.vulnerable_params = payloads.comm_injection_vulnerable_params
 
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="Command injection scan encountered an error",
+        return_on_error=[]
+    )
     async def scan(self, url: str) -> List[Dict]:
         """
         Scan a URL for command injection vulnerabilities.
@@ -57,7 +66,10 @@ class CommandInjectionScanner(BaseScanner):
             vulnerabilities.extend(json_vulns)
             
         except Exception as e:
-            self.logger.error(f"Error scanning '{url}' for command injection: {e}")
+            error_handler.handle_error(
+                ScanError(f"Error scanning '{url}' for command injection: {str(e)}", original_error=e),
+                context={"url": url, "scanner": "CMD"}
+            )
             
         return vulnerabilities
 
@@ -330,6 +342,11 @@ class CommandInjectionScanner(BaseScanner):
         # General time-based detection (response took unusually long)
         return response_time > 8.0  # Arbitrary threshold
 
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="Command injection validation encountered an error",
+        return_on_error=False
+    )
     async def validate(self, url: str, payload: str, evidence: str) -> bool:
         """
         Validate a command injection vulnerability.
@@ -380,6 +397,9 @@ class CommandInjectionScanner(BaseScanner):
                         return True
                         
         except Exception as e:
-            self.logger.error(f"Error validating command injection at {url}: {e}")
+            error_handler.handle_error(
+                ScanError(f"Error validating command injection at {url}: {str(e)}", original_error=e),
+                context={"url": url, "scanner": "CMD"}
+            )
             
         return False

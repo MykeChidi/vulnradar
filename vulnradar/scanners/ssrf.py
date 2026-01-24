@@ -8,6 +8,10 @@ import aiohttp
 
 from .base import BaseScanner
 from . import payloads
+from ..utils.error_handler import get_global_error_handler, handle_async_errors, ScanError
+
+# Setup error handler
+error_handler = get_global_error_handler()
 
 
 class SSRFScanner(BaseScanner):
@@ -26,6 +30,11 @@ class SSRFScanner(BaseScanner):
         # Response indicators for successful SSRF
         self.indicators = payloads.ssrf_indicators
         
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="SSRF scan encountered an error",
+        return_on_error=[]
+    )
     async def scan(self, url: str) -> List[Dict]:
         """
         Scan a URL for SSRF vulnerabilities.
@@ -53,7 +62,10 @@ class SSRFScanner(BaseScanner):
                 vulnerabilities.extend(ssrf_findings)
                 
         except Exception as e:
-            self.logger.error(f"Error scanning '{url}' for SSRF: {e}")
+            error_handler.handle_error(
+                ScanError(f"Error scanning '{url}' for SSRF: {str(e)}", original_error=e),
+                context={"url": url, "scaner": "SSRF"}
+            )
             
         return vulnerabilities
     
@@ -91,7 +103,10 @@ class SSRFScanner(BaseScanner):
                     vulnerabilities.append(vulnerability)
                     
         except Exception as e:
-            self.logger.error(f"Error testing SSRF parameter {param_name}: {e}")
+            error_handler.handle_error(
+                ScanError(f"Error testing SSRF parameter {param_name}: {str(e)}", original_error=e),
+                context={"url": url, "parameter": param_name, "scanner": "SSRF"}
+            )
             
         return vulnerabilities
     
@@ -139,7 +154,10 @@ class SSRFScanner(BaseScanner):
                         vulnerabilities.append(vulnerability)
                         
         except Exception as e:
-            self.logger.error(f"Error testing SSRF form: {e}")
+            error_handler.handle_error(
+                ScanError(f"Error testing SSRF form: {str(e)}", original_error=e),
+                context={"url": url, 'scanner':'SSRF'}
+            )
             
         return vulnerabilities
     
@@ -308,6 +326,11 @@ class SSRFScanner(BaseScanner):
             
         return None
     
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="SSRF validation encountered an error",
+        return_on_error=False
+    )
     async def validate(self, url: str, payload: str, evidence: str) -> bool:
         """
         Validate an SSRF vulnerability finding.

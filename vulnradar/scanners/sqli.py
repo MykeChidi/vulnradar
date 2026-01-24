@@ -6,6 +6,10 @@ from typing import Dict, List
 import aiohttp
 from .base import BaseScanner
 from . import payloads
+from ..utils.error_handler import get_global_error_handler, handle_async_errors, ScanError
+
+# Setup error handler
+error_handler = get_global_error_handler()
 
 
 class SQLInjectionScanner(BaseScanner):
@@ -20,7 +24,12 @@ class SQLInjectionScanner(BaseScanner):
         
         # Error patterns indicating SQL injection
         self.error_patterns = payloads.sqli_error_patterns
-        
+    
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="SQL injection scan encountered an error",
+        return_on_error=[]
+    )
     async def scan(self, url: str) -> List[Dict]:
         """
         Scan a URL for SQL injection vulnerabilities.
@@ -46,7 +55,10 @@ class SQLInjectionScanner(BaseScanner):
                 vulnerabilities.extend(post_vulns)
                 
         except Exception as e:
-            self.logger.error(f"Error scanning '{url}' for sqli: {e}")
+            error_handler.handle_error(
+                ScanError(f"Error scanning '{url}' for SQL injection: {str(e)}", original_error=e),
+                context={"url": url, "scanner": "SQLI"}
+            )
 
         return vulnerabilities
         
@@ -104,7 +116,10 @@ class SQLInjectionScanner(BaseScanner):
                                 break
                                 
                 except Exception as e:
-                    self.logger.error(f"Error testing SQL injection on GET parameter {param_name} at {url}: {e}")
+                    error_handler.handle_error(
+                        ScanError(f"Error testing SQL injection on GET parameter {param_name} at {url}: {str(e)}", original_error=e),
+                        context={"url": url, "parameter": param_name, "scanner": "SQLI"}
+                    )
                     
         return vulnerabilities
         
@@ -185,7 +200,10 @@ class SQLInjectionScanner(BaseScanner):
                                     break
                                     
                 except Exception as e:
-                    self.logger.error(f"Error testing SQL injection on field {field_name} at {action_url}: {e}")
+                    error_handler.handle_error(
+                        ScanError(f"Error testing SQL injection on field {field_name} at {action_url}: {str(e)}", original_error=e),
+                        context={"url": action_url, "field": field_name, "scanner": "SQLI"}
+                    )
                     
         return vulnerabilities
         
@@ -222,6 +240,11 @@ class SQLInjectionScanner(BaseScanner):
                 
         return ""
         
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="SQL injection validation encountered an error",
+        return_on_error=False
+    )
     async def validate(self, url: str, payload: str, evidence: str) -> bool:
         """
         Validate a SQL injection finding.
@@ -289,5 +312,8 @@ class SQLInjectionScanner(BaseScanner):
             return False
             
         except Exception as e:
-            self.logger.error(f"Error validating SQL injection at '{url}': {e}")
+            error_handler.handle_error(
+                ScanError(f"Error validating SQL injection at '{url}': {str(e)}", original_error=e),
+                context={"url": url, "scanner": "SQLI"}
+            )
             return False

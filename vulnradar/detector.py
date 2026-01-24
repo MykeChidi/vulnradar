@@ -7,6 +7,11 @@ from dataclasses import dataclass
 
 import aiohttp
 from bs4 import BeautifulSoup
+from .utils.error_handler import (get_global_error_handler,
+    ParseError, NetworkError, ScanTimeoutError, ScanError)
+
+# Setup error handler
+error_handler = get_global_error_handler()
 
 
 @dataclass
@@ -241,13 +246,29 @@ class TechDetector:
                     structured_detections = self._detect_from_structure(soup)
                     self._merge_detections(detected_techs, structured_detections)
                 except Exception as e:
+                    error_handler.handle_error(
+                        ParseError(f"HTML parsing error: {str(e)}", original_error=e),
+                        context={"url": url}
+                    )
                     errors.append(f"HTML parsing error: {str(e)}")
         
         except aiohttp.ClientError as e:
+            error_handler.handle_error(
+                NetworkError(f"Connection error: {str(e)}", original_error=e),
+                context={"url": url}
+            )
             errors.append(f"Connection error: {str(e)}")
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:
+            error_handler.handle_error(
+                ScanTimeoutError(f"Request timeout after {self.timeout.total}s", original_error=e),
+                context={"url": url, "timeout": self.timeout.total}
+            )
             errors.append(f"Request timeout after {self.timeout.total}s")
         except Exception as e:
+            error_handler.handle_error(
+                ScanError(f"Unexpected error: {type(e).__name__}: {str(e)}", original_error=e),
+                context={"url": url}
+            )
             errors.append(f"Unexpected error: {type(e).__name__}: {str(e)}")
         finally:
             if close_session:

@@ -7,7 +7,10 @@ from pathlib import Path
 from ..utils.logger import setup_logger
 from ..utils.rate_limit import RateLimiter
 from ..utils.cache import ScanCache
+from ..utils.error_handler import get_global_error_handler, handle_async_errors, NetworkError
 from ._target import ReconTarget
+
+error_handler = get_global_error_handler()
 
 
 class MiscellaneousAnalyzer:
@@ -19,7 +22,7 @@ class MiscellaneousAnalyzer:
     def __init__(self, target: ReconTarget, options: Dict):
         self.target = target
         self.options = options
-        self.logger = setup_logger("misc_analyzer", scanner_specific=True)
+        self.logger = setup_logger("misc_analyzer", file_specific=True)
         self.rate_limiter = RateLimiter()
         # Initialize cache
         if not options.get("no_cache", False):
@@ -28,6 +31,11 @@ class MiscellaneousAnalyzer:
         else:
             self._cache = None
 
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="Miscellaneous reconnaissance analysis encountered an error",
+        return_on_error={}
+    )
     async def analyze(self) -> Dict:
         """
         Perform miscellaneous analysis techniques.
@@ -83,8 +91,13 @@ class MiscellaneousAnalyzer:
                                 response.status
                             )
                     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                        await self.rate_limiter.report_failure()  # ADD THIS LINE
-                        self.logger.debug(f"Error trigger failed for {error_type}: {str(e)}")
+                        error_msg = f"Error analysis failed for {error_type} on {self.target.url}: {str(e)}"
+                        self.logger.debug(error_msg)
+                        error_handler.handle_error(
+                            NetworkError(error_msg),
+                            context={"url": self.target.url, "error_type": f"error_page_{error_type}"}
+                        )
+                        await self.rate_limiter.report_failure()
 
             # Analyze for patterns
             error_results["error_patterns"] = await self._identify_error_patterns(

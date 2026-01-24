@@ -5,6 +5,10 @@ from typing import Dict, List
 
 import aiohttp
 from bs4 import BeautifulSoup
+from ..utils.error_handler import get_global_error_handler, ParseError, ValidationError
+
+# Setup error handler
+error_handler = get_global_error_handler()
 
 
 class BaseScanner(abc.ABC):
@@ -21,14 +25,6 @@ class BaseScanner(abc.ABC):
         self.headers = headers or {}
         self.timeout = timeout
         
-        # Setup scanner-specific logger
-        from utils.logger import setup_logger
-        scanner_name = self.__class__.__name__
-        self.logger = setup_logger(
-            name=scanner_name,
-            log_to_file=True,
-            scanner_specific=True  # This will create a scanner-specific log file
-        )
         
     @abc.abstractmethod
     async def scan(self, url: str) -> List[Dict]:
@@ -121,7 +117,10 @@ class BaseScanner(abc.ABC):
                     return forms
                     
         except Exception as e:
-            self.logger.error(f"Error extracting forms from {url}: {e}")
+            error_handler.handle_error(
+                ParseError(f"Error extracting forms from {url}: {str(e)}", original_error=e),
+                context={"url": url}
+            )
             return []
 
     async def _extract_parameters(self, url: str) -> Dict[str, str]:
@@ -144,5 +143,8 @@ class BaseScanner(abc.ABC):
             return {k: v[0] if v else '' for k, v in query_params.items()}
             
         except Exception as e:
-            self.logger.error(f"Error extracting parameters from {url}: {e}")
+            error_handler.handle_error(
+                ValidationError(f"Error extracting parameters from {url}: {str(e)}", original_error=e),
+                context={"url": url}
+            )
             return {}

@@ -10,6 +10,10 @@ from datetime import datetime
 
 from .core import VulnRadar
 from .utils.gui_icon import set_window_icon
+from .utils.error_handler import get_global_error_handler, handle_errors, ScanError
+
+# Setup error handler
+error_handler = get_global_error_handler()
 
 
 class ModernButton(tk.Canvas):
@@ -791,7 +795,12 @@ class VulnRadarGUI:
             self.scan_running = False
             self.progress_var.set("Stopping scan...")
             self.log_message("Scan stop requested", "warning")
-            
+    
+    @handle_errors(
+        error_handler=error_handler,
+        user_message="Failed to run vulnerability scan",
+        return_on_error=None
+    )
     def run_scan(self, url: str, options: Dict[str, Any]):
         """Run scan in background thread"""
         try:
@@ -863,9 +872,13 @@ class VulnRadarGUI:
                                   f"Reports saved to: {options['output_dir']}")
                 
         except Exception as e:
-            self.log_message(f"Error during scan: {str(e)}", "error")
+            error_info = error_handler.handle_error(
+                ScanError(f"Error during scan: {str(e)}", original_error=e),
+                context={"target_url": self.url_entry.get()}
+            )
+            self.log_message(error_info["message"], "error")
             self.progress_var.set("Scan failed")
-            messagebox.showerror("Scan Error", f"An error occurred:\n{str(e)}")
+            messagebox.showerror("Scan Error", error_info["message"])
             
         finally:
             self.scan_running = False

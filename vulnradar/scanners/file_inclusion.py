@@ -9,6 +9,10 @@ import aiohttp
 
 from .base import BaseScanner
 from . import payloads
+from ..utils.error_handler import get_global_error_handler, handle_async_errors, ScanError
+
+# Setup error handler
+error_handler = get_global_error_handler()
 
 
 class FileInclusionScanner(BaseScanner):
@@ -29,6 +33,11 @@ class FileInclusionScanner(BaseScanner):
         # File inclusion parameter names
         self.file_params = payloads.file_inclusion_file_params
       
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="File inclusion scan encountered an error",
+        return_on_error=[]
+    )
     async def scan(self, url: str) -> List[Dict]:
         """
         Scan a URL for file inclusion vulnerabilities.
@@ -50,7 +59,10 @@ class FileInclusionScanner(BaseScanner):
             vulnerabilities.extend(form_vulns)
         
         except Exception as e:
-            self.logger.error(f"Error scanning '{url}' for file inclusion: {e}")
+            error_handler.handle_error(
+                ScanError(f"Error scanning '{url}' for file inclusion: {str(e)}", original_error=e),
+                context={"url": url, "scanner": "File_incl"}
+            )
             
         return vulnerabilities
     

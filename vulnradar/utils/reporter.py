@@ -8,6 +8,9 @@ from jinja2 import Environment, FileSystemLoader
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+from .error_handler import get_global_error_handler, handle_errors, ResourceError
+
+error_handler = get_global_error_handler()
 
 class Report:
     """Data holder for all scan results."""
@@ -30,6 +33,11 @@ class ReportGenerator:
             loader=FileSystemLoader(Path(__file__).parent / "templates")
         )
 
+    @handle_errors(
+        error_handler=error_handler,
+        user_message="Failed to generate HTML report",
+        return_on_error=None
+    )
     def generate_html_report(self, report: Report) -> str:
         """Generate HTML report, with different templates for recon-only vs vulnerability scans."""
         # Choose template based on report type
@@ -53,10 +61,22 @@ class ReportGenerator:
             is_recon_only=report.is_recon_only
         )
         path = self.output_dir / f"{report.target.replace('://','_')}.html"
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(html)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(html)
+        except Exception as e:
+            error_handler.handle_error(
+                ResourceError(f"Failed to write HTML report: {str(e)}", original_error=e),
+                context={"target": report.target, "path": str(path)}
+            )
+            raise
         return str(path)
 
+    @handle_errors(
+        error_handler=error_handler,
+        user_message="Failed to generate PDF report",
+        return_on_error=None
+    )
     def generate_pdf_report(self, report: Report) -> str:
         """Generate PDF report, handling recon-only and vulnerability scan data."""
         path = self.output_dir / f"{report.target.replace('://','_')}.pdf"
@@ -86,6 +106,11 @@ class ReportGenerator:
         doc.build([table])
         return str(path)
 
+    @handle_errors(
+        error_handler=error_handler,
+        user_message="Failed to generate JSON report",
+        return_on_error=None
+    )
     def generate_json_report(self, report: Report) -> str:
         """Generate JSON report, organizing data based on report type."""
         if report.is_recon_only:
@@ -107,10 +132,22 @@ class ReportGenerator:
             }
         
         path = self.output_dir / f"{report.target.replace('://','_')}.json"
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(obj, f, indent=2)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(obj, f, indent=2)
+        except Exception as e:
+            error_handler.handle_error(
+                ResourceError(f"Failed to write JSON report: {str(e)}", original_error=e),
+                context={"target": report.target, "path": str(path)}
+            )
+            raise
         return str(path)
 
+    @handle_errors(
+        error_handler=error_handler,
+        user_message="Failed to generate Excel report",
+        return_on_error=None
+    )
     def generate_excel_report(self, report: Report) -> str:
         """Generate Excel report, handling both recon-only and vulnerability data."""
         if report.is_recon_only:
@@ -136,5 +173,12 @@ class ReportGenerator:
             df = pd.DataFrame(report.vulnerabilities)
         
         path = self.output_dir / f"{report.target.replace('://','_')}.xlsx"
-        df.to_excel(path, index=False)
+        try:
+            df.to_excel(path, index=False)
+        except Exception as e:
+            error_handler.handle_error(
+                ResourceError(f"Failed to write Excel report: {str(e)}", original_error=e),
+                context={"target": report.target, "path": str(path)}
+            )
+            raise
         return str(path)

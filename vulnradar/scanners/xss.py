@@ -8,6 +8,10 @@ from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse, quote
 from bs4 import BeautifulSoup
 from .base import BaseScanner
 from . import payloads
+from ..utils.error_handler import get_global_error_handler, handle_async_errors, ScanError
+
+# Setup error handler
+error_handler = get_global_error_handler()
 
 
 class XSSScanner(BaseScanner):
@@ -19,7 +23,12 @@ class XSSScanner(BaseScanner):
         
         # XSS payloads
         self.payloads = payloads.xss_payloads
-        
+    
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="XSS scan encountered an error",
+        return_on_error=[]
+    )
     async def scan(self, url: str) -> List[Dict]:
         """
         Scan a URL for XSS vulnerabilities.
@@ -49,7 +58,10 @@ class XSSScanner(BaseScanner):
             vulnerabilities.extend(dom_vulns)
 
         except Exception as e:
-            self.logger.error(f"Error scanning '{url}' for XSS: {e}")
+            error_handler.handle_error(
+                ScanError(f"Error scanning '{url}' for XSS: {str(e)}", original_error=e),
+                context={"url": url, 'scanner':'XSS'}
+            )
 
         return vulnerabilities
         
@@ -105,7 +117,10 @@ class XSSScanner(BaseScanner):
                                 break
                                 
                 except Exception as e:
-                    self.logger.error(f"Error testing XSS on GET parameter {param_name} at {url}: {e}")
+                    error_handler.handle_error(
+                        ScanError(f"Error testing XSS on GET parameter {param_name} at {url}: {str(e)}", original_error=e),
+                        context={"url": url, "parameter": param_name, "scanner":"XSS"}
+                    )
                     
         return vulnerabilities
         
@@ -186,7 +201,10 @@ class XSSScanner(BaseScanner):
                                     break
                                     
                 except Exception as e:
-                    self.logger.error(f"Error testing XSS on {action_url}: {e}")
+                    error_handler.handle_error(
+                        ScanError(f"Error testing XSS on {action_url}: {str(e)}", original_error=e),
+                        context={"url": action_url, "scanner":"XSS"}
+                    )
         return vulnerabilities
     
     def _check_for_xss_reflection(self, response_text: str, payload: str) -> bool:
@@ -413,7 +431,10 @@ class XSSScanner(BaseScanner):
                             })
                             
             except Exception as e:
-                self.logger.error(f"Error testing DOM XSS on {url}: {e}")
+                error_handler.handle_error(
+                    ScanError(f"Error testing DOM XSS on {url}: {str(e)}", original_error=e),
+                    context={"url": url, "scanner":"XSS(DOM)"}
+                )
         
         return vulnerabilities
 
@@ -497,6 +518,11 @@ class XSSScanner(BaseScanner):
         
         return "DOM XSS indicators detected in JavaScript code"
 
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="XSS validation encountered an error",
+        return_on_error=False
+    )
     async def validate(self, url: str, payload: str, evidence: str) -> bool:
         """
         Validate an XSS vulnerability finding.
@@ -556,5 +582,8 @@ class XSSScanner(BaseScanner):
             return False
             
         except Exception as e:
-            self.logger.error(f"Error validating XSS vulnerability at '{url}': {e}")
+            error_handler.handle_error(
+                ScanError(f"Error validating XSS vulnerability at '{url}': {str(e)}", original_error=e),
+                context={"url": url, 'scanner':'XSS'}
+            )
             return False

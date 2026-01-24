@@ -9,6 +9,10 @@ import aiohttp
 
 from .base import BaseScanner
 from . import payloads
+from ..utils.error_handler import get_global_error_handler, handle_async_errors, ScanError
+
+# Setup error handler
+error_handler = get_global_error_handler()
 
 class PathTraversalScanner(BaseScanner):
     """Scanner for Path Traversal vulnerabilities."""
@@ -25,6 +29,11 @@ class PathTraversalScanner(BaseScanner):
         # Common parameter names that might be vulnerable to path traversal
         self.vulnerable_params = payloads.path_traversal_vulnerable_params
 
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="Path traversal scan encountered an error",
+        return_on_error=[]
+    )
     async def scan(self, url: str) -> List[Dict]:
         """
         Scan a URL for path traversal vulnerabilities.
@@ -50,7 +59,10 @@ class PathTraversalScanner(BaseScanner):
             vulnerabilities.extend(file_vulns)
         
         except Exception as e:
-            self.logger.error(f"Error scanning {url} for path traversal: {e}")
+            error_handler.handle_error(
+                ScanError(f"Error scanning {url} for path traversal: {str(e)}", original_error=e),
+                context={"url": url, "scanner": "path_trav"}
+            )
         
         return vulnerabilities
     

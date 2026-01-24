@@ -11,8 +11,13 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from .utils.logger import setup_logger
+from .utils.error_handler import (get_global_error_handler,
+    ConfigurationError, ResourceError, NetworkError, ScanError)
 
 logger = setup_logger("WebCrawler")
+
+# Setup error handler
+error_handler = get_global_error_handler()
 
 
 class WebCrawler:
@@ -87,7 +92,10 @@ class WebCrawler:
             self.driver.set_script_timeout(self.timeout)
             logger.info("Selenium initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize Selenium: {e}")
+            error_handler.handle_error(
+                ConfigurationError(f"Failed to initialize Selenium: {str(e)}", original_error=e),
+                context={"use_selenium": True}
+            )
             self.use_selenium = False
             self.driver = None
     
@@ -101,7 +109,10 @@ class WebCrawler:
                 self.driver.quit()
                 logger.debug("Selenium driver closed")
             except Exception as e:
-                logger.error(f"Error closing Selenium: {e}")
+                error_handler.handle_error(
+                    ResourceError(f"Error closing Selenium: {str(e)}", original_error=e),
+                    context={}
+                )
             finally:
                 self.driver = None
     
@@ -118,9 +129,9 @@ class WebCrawler:
             async with aiohttp.ClientSession(headers=self.headers, timeout=session_timeout) as session:
                 while self.to_visit and self.page_count < self.max_pages:
                     if len(self.visited_urls) > self.max_pages * 1.5:
-                            logger.warning(f"URL tracking limit reached: {len(self.visited_urls)}")
-                            self._url_limit_reached = True
-                            break
+                        logger.warning(f"URL tracking limit reached: {len(self.visited_urls)}")
+                        self._url_limit_reached = True
+                        break
                     
                     url, depth = self.to_visit.popleft()
                     
@@ -165,13 +176,22 @@ class WebCrawler:
                                     
                     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                         # Log error but continue crawling
-                        logger.debug(f"Error crawling {url}: {e}")
+                        error_handler.handle_error(
+                            NetworkError(f"Error crawling {url}: {str(e)}", original_error=e),
+                            context={"url": url, "depth": depth}
+                        )
                     except Exception as e:
-                        logger.error(f"Unexpected error crawling {url}: {e}")
+                        error_handler.handle_error(
+                            ScanError(f"Unexpected error crawling {url}: {str(e)}", original_error=e),
+                            context={"url": url, "depth": depth}
+                        )
                         
                 logger.info(f"Crawling finished. Total pages visited: {self.page_count}")
         except Exception as e:
-            logger.error(f"Crawl error: {e}")
+            error_handler.handle_error(
+                ScanError(f"Crawl error: {str(e)}", original_error=e),
+                context={"target_url": self.base_url}
+            )
             raise
         finally:
             # Cleanup if not using context manager

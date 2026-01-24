@@ -10,7 +10,10 @@ from pathlib import Path
 from ..utils.logger import setup_logger
 from ..utils.rate_limit import RateLimiter
 from ..utils.cache import ScanCache
+from ..utils.error_handler import get_global_error_handler, handle_async_errors, NetworkError
 from ._target import ReconTarget
+
+error_handler = get_global_error_handler()
 
 
 class SecurityInfrastructureAnalyzer:
@@ -22,7 +25,7 @@ class SecurityInfrastructureAnalyzer:
     def __init__(self, target: ReconTarget, options: Dict):
         self.target = target
         self.options = options
-        self.logger = setup_logger("security_recon", scanner_specific=True)
+        self.logger = setup_logger("security_recon", file_specific=True)
         self.rate_limiter = RateLimiter()
         
         # Initialize cache
@@ -32,6 +35,11 @@ class SecurityInfrastructureAnalyzer:
         else:
             self._cache = None
 
+    @handle_async_errors(
+        error_handler=error_handler,
+        user_message="Security reconnaissance analysis encountered an error",
+        return_on_error={}
+    )
     async def analyze(self) -> Dict:
         """
         Perform comprehensive security infrastructure analysis.
@@ -412,22 +420,52 @@ class SecurityInfrastructureAnalyzer:
             return cert_info
             
         except socket.timeout:
-            self.logger.error("Timeout connecting for certificate analysis")
+            error_msg = f"Timeout connecting for certificate analysis on {self.target.hostname}:{self.target.port}"
+            self.logger.error(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"hostname": self.target.hostname, "port": self.target.port, "error_type": "timeout", "retryable": True}
+            )
             return {"error": "timeout", "message": "Connection timeout", "retryable": True}
         except socket.gaierror as e:
-            self.logger.error(f"DNS resolution failed: {str(e)}")
+            error_msg = f"DNS resolution failed for {self.target.hostname}: {str(e)}"
+            self.logger.error(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"hostname": self.target.hostname, "error_type": "dns_resolution_failed"}
+            )
             return {"error": "dns_failed", "message": "Cannot resolve hostname"}
-        except ConnectionRefusedError:
-            self.logger.error("Connection refused on port 443")
+        except ConnectionRefusedError as e:
+            error_msg = f"Connection refused on {self.target.hostname}:443"
+            self.logger.error(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"hostname": self.target.hostname, "port": 443, "error_type": "connection_refused"}
+            )
             return {"error": "connection_refused", "message": "Server refused connection on port 443"}
         except ssl.SSLError as e:
-            self.logger.error(f"SSL error: {str(e)}")
+            error_msg = f"SSL error analyzing {self.target.hostname}: {str(e)}"
+            self.logger.error(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"hostname": self.target.hostname, "error_type": "ssl_error", "ssl_error_details": str(e)}
+            )
             return {"error": "ssl_error", "message": str(e)}
         except OpenSSL.crypto.Error as e:
-            self.logger.error(f"Certificate parsing error: {str(e)}")
+            error_msg = f"Certificate parsing error for {self.target.hostname}: {str(e)}"
+            self.logger.error(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"hostname": self.target.hostname, "error_type": "cert_parse_error"}
+            )
             return {"error": "parse_error", "message": "Failed to parse certificate"}
         except Exception as e:
-            self.logger.exception(f"Unexpected error in certificate analysis: {str(e)}")
+            error_msg = f"Unexpected error in certificate analysis for {self.target.hostname}: {str(e)}"
+            self.logger.exception(error_msg)
+            error_handler.handle_error(
+                NetworkError(error_msg),
+                context={"hostname": self.target.hostname, "error_type": "unexpected_cert_error"}
+            )
             return {"error": "unexpected", "message": str(e)}
             
     async def _check_ssl_vulnerabilities(self) -> List[Dict]:

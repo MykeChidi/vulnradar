@@ -12,6 +12,9 @@ from typing import Any, Optional, Callable, Dict
 import functools
 from .logger import setup_logger
 from .validator import Validator
+from .error_handler import get_global_error_handler, handle_errors
+
+error_handler = get_global_error_handler()
 
 
 class CacheEntry:
@@ -190,6 +193,11 @@ class ScanCache:
         self.misses += 1
         return None
     
+    @handle_errors(
+        error_handler=error_handler,
+        user_message="Failed to cache result",
+        return_on_error=None
+    )
     def set(self, key: str, value: Any, ttl: Optional[int] = None):
         """
         Set cached value.
@@ -254,6 +262,11 @@ class ScanCache:
         if cache_file.exists():
             cache_file.unlink()
     
+    @handle_errors(
+        error_handler=error_handler,
+        user_message="Failed to clear cache",
+        return_on_error=None
+    )
     def clear_all(self):
         """Clear all cache entries."""
         with self._lock:

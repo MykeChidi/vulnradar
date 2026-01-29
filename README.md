@@ -1,406 +1,198 @@
 # `VulnRadar` - A Web Vulnerability Scanner
 
-A comprehensive, asynchronous web vulnerability scanner designed to identify common security flaws in web applications. VulnRadar performs automated reconnaissance, crawling, technology detection, and vulnerability testing with detailed reporting capabilities.
+A comprehensive, asynchronous web vulnerability scanner designed to identify common security flaws in web applications. VulnRadar combines intelligent web crawling, advanced reconnaissance, and targeted vulnerability testing with detailed reporting capabilities.
+
+## Quick Start
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Basic scan
+python -m vulnradar https://example.com
+
+# Run with GUI
+python -m vulnradar --gui
+```
 
 ## Features
 
-### 🖥️ User Interface
-- **Command-line interface** - Full-featured CLI with extensive options
-- **Graphical interface** - User-friendly GUI for easier operation
-
-### 🔍 Reconnaissance
-- **Basic Reconnaissance**
-  - DNS lookup (A, MX, NS, TXT records)
-  - Port scanning (top 1000 ports)
-  - Web Application Firewall (WAF) detection
-  - Technology stack identification
-
-- **Advanced Reconnaissance Modules**
+### 🔍 Reconnaissance & Discovery
+- **DNS Enumeration** - A, MX, NS, TXT record lookups
+- **Port Scanning** - Configurable port ranges with service detection
+- **WAF Detection** - Identify Web Application Firewalls
+- **Technology Stack Detection** - Detect frameworks, servers, and libraries
+- **Advanced Recon Modules**:
   - Network Infrastructure Analysis
-  - Security Infrastructure Analysis
+  - Security Infrastructure Analysis  
   - Web Application Analysis
   - Infrastructure Relationship Mapping
   - Miscellaneous Analysis
 
 ### 🕷️ Web Crawling
-- Intelligent web crawling with configurable depth
+- Intelligent crawling with configurable depth
 - JavaScript rendering support via Selenium
-- Endpoint discovery and mapping
-- Progress tracking with visual indicators
-- Configurable page limits to prevent memory overflow
+- Endpoint discovery and URL mapping
+- Configurable page limits
+- Cookie and custom header support
 
 ### 🛡️ Vulnerability Detection
-- **SQL Injection** - Detects database injection vulnerabilities
-- **Cross-Site Scripting (XSS)** - Identifies reflected, stored, and DOM-based XSS
-- **Cross-Site Request Forgery (CSRF)** - Checks for CSRF protection mechanisms
-- **Server-Side Request Forgery (SSRF)** - Tests for SSRF vulnerabilities
-- **Path Traversal** - Directory traversal and file access vulnerabilities
-- **File Inclusion** - Local and remote file inclusion vulnerabilities
-- **Command Injection** - OS command injection testing
+- **SQL Injection (SQLi)** - Database injection detection
+- **Cross-Site Scripting (XSS)** - Reflected and DOM-based XSS
+- **Cross-Site Request Forgery (CSRF)** - CSRF token detection
+- **Server-Side Request Forgery (SSRF)** - SSRF vulnerability detection
+- **Path Traversal** - Directory traversal and path-based attacks
+- **File Inclusion** - LFI and RFI detection
+- **Command Injection** - OS command injection detection
 
 ### 📊 Reporting
-- **HTML Reports** - Interactive web-based reports
-- **PDF Reports** - Professional documentation format
-- **JSON Reports** - Machine-readable format for integration
-- **Excel Reports** - Spreadsheet format for analysis
+- **HTML Reports** - Interactive, detailed findings
+- **PDF Reports** - Professional printable format
+- **JSON Export** - Machine-readable format for automation
+- **Excel Reports** - Spreadsheet with vulnerability details
 - **SQLite Database** - Persistent storage for scan results
 
-### ⚡ Performance
-- Asynchronous scanning for improved performance
-- Configurable concurrency limits
-- Request timeout management
-- Progress tracking and logging
-- Result caching for faster repeated scans
-- Batch processing for large endpoint sets
+### ⚙️ Performance & Configuration
+- Asynchronous scanning for speed
+- Configurable concurrency (worker threads)
+- Request timeout control
+- Caching system for result optimization
+- Database storage option
+
+### 🖥️ User Interfaces
+- **Command-Line Interface (CLI)** - Full automation support
+- **Graphical User Interface (GUI)** - Tkinter-based GUI
 
 ## Installation
 
-### Prerequisites
+### Requirements
 - Python 3.10+
 - pip package manager
+- Git (optional, for cloning the repository)
 
-### Required Dependencies
-Install the required Python packages:
+### Quick Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/MykeChidi/vulnradar.git
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Verify installation
+python -m vulnradar --help
 ```
 
-### Optional Dependencies
-For JavaScript rendering support:
-```bash
-# Install ChromeDriver for Selenium
-# Ubuntu/Debian:
-sudo apt-get install chromium-chromedriver
+For detailed setup instructions, see [Installation Guide](docs/INSTALLATION.md).
 
-# macOS:
-brew install chromedriver
+## Basic Usage
 
-# Windows:
-# Download from https://chromedriver.chromium.org/
-```
-
-## Usage
-
-### GUI Mode
-
-Launch the graphical interface:
-```bash
-python -m vulnradar --gui
-```
-
-Or launch with pre-filled target URL:
-```bash
-python -m vulnradar https://example.com --gui
-```
-
-### Command Line Mode
-
-#### Basic Usage
+### Simple Scan
 ```bash
 python -m vulnradar https://example.com
 ```
 
-#### View Usage Examples
-Run without arguments to see comprehensive usage examples:
+### With Custom Options
 ```bash
-python -m vulnradar
+python -m vulnradar https://example.com \
+    --crawl-depth 4 \
+    --max-workers 8 \
+    --timeout 20 \
+    --output-dir ./results
 ```
 
-### Command Line Arguments
-
-#### Target Options
-- `url` - Target URL to scan (required for CLI mode)
-- `--cookies` - Cookies to include with HTTP requests
-- `--user-agent` - Custom User-Agent string (default: VulnRadar/1.0)
-- `--gui` - Launch graphical user interface
-
-#### Scan Configuration
-- `--crawl-depth` - Maximum crawl depth (default: 3)
-- `--max-crawl-pages` - Maximum number of pages to crawl (default: 1000)
-- `--timeout` - Request timeout in seconds (default: 10)
-- `--max-workers` - Maximum concurrent workers (default: 5)
-- `--use-selenium` - Enable JavaScript rendering with Selenium
-- `--port-scan` - Perform port scanning during reconnaissance
-
-#### Vulnerability Scanning Toggles
-- `--no-sqli` - Skip SQL injection scanning
-- `--no-xss` - Skip XSS scanning
-- `--no-csrf` - Skip CSRF scanning
-- `--no-ssrf` - Skip SSRF scanning
-- `--no-path-traversal` - Skip path traversal scanning
-- `--no-file-inclusion` - Skip file inclusion scanning
-- `--no-command-injection` - Skip command injection scanning
-
-#### Advanced Reconnaissance Options
-- `--recon-only` - Perform reconnaissance only, skip vulnerability scanning
-- `--recon-network` - Enable network infrastructure analysis
-- `--recon-security` - Enable security infrastructure analysis
-- `--recon-webapp` - Enable web application analysis
-- `--recon-infrastructure` - Enable infrastructure relationship mapping
-- `--recon-misc` - Enable miscellaneous analysis
-- `--recon-all` - Enable all reconnaissance modules
-
-#### Fine-Grained Reconnaissance Control
-
-**Network Analysis:**
-- `--no-advanced-port-scan` - Skip port scanning during advanced recon
-- `--no-waf-detect` - Skip firewall detection
-- `--no-detect-load-balancers` - Skip load balancer detection
-- `--no-service-detection` - Skip service detection on open ports
-- `--no-os-detection` - Skip target OS detection
-- `--no-script-scan` - Skip nmap script scan
-- `--port-range` - Range of ports to scan
-
-**Web Application Analysis:**
-- `--no-content-discovery` - Skip content discovery
-- `--no-js-analysis` - Skip JavaScript content analysis
-- `--dir-enum` - Enable directory enumeration
-
-**Infrastructure Mapping:**
-- `--no-subdomain-enum` - Skip subdomain enumeration
-- `--no-cloud-mapping` - Skip cloud infrastructure mapping
-- `--no-dns-bruteforce` - Skip DNS brute-force
-
-**Security Analysis:**
-- `--no-ssl-analysis` - Skip SSL security configuration analysis
-- `--no-security-headers` - Skip security header configuration analysis
-
-**Miscellaneous:**
-- `--no-error-analysis` - Skip error code analysis
-- `--no-cache-analysis` - Skip cache configuration analysis
-- `--no-debug-mode-check` - Skip debug mode detection
-- `--no-check-dev-artifacts` - Skip development artifact detection
-- `--no-backend-tests` - Skip backend tests
-
-#### Cache Options
-- `--cache-dir` - Directory for caching results (default: cache)
-- `--cache-ttl` - Cache time-to-live in seconds (default: 3600)
-- `--no-cache` - Disable result caching
-- `--clear-cache` - Clear cache before scanning
-
-#### Output Options
-- `--output-dir` - Output directory for reports (default: scan_results)
-- `--no-html` - Skip HTML report generation
-- `--no-pdf` - Skip PDF report generation
-- `--no-json` - Skip JSON report generation
-- `--excel` - Generate Excel report
-
-#### Database Options
-- `--use-db` - Store results in SQLite database
-- `--db-path` - Path to SQLite database (default: vulnradar.db)
-
-## Advanced Usage Examples
-
-### Quick Scan
+### Reconnaissance Only
 ```bash
-python -m vulnradar https://example.com
+python -m vulnradar https://example.com --recon-only --recon-all
 ```
 
 ### Authenticated Scanning
 ```bash
 python -m vulnradar https://app.example.com \
-    --cookies "PHPSESSID=abc123; user_token=xyz789" \
-    --crawl-depth 3 \
-    --output-dir ./authenticated_scan
+    --cookies "session=abc123;auth=xyz789"
 ```
 
-### Comprehensive Security Assessment
+### Database Storage
 ```bash
 python -m vulnradar https://example.com \
-    --crawl-depth 5 \
-    --port-scan \
-    --use-selenium \
-    --timeout 20 \
-    --max-workers 10 \
     --use-db \
-    --db-path ./scans.db \
-    --excel
+    --db-path ./scans.db
 ```
 
-### Targeted Vulnerability Scanning
-```bash
-python -m vulnradar https://example.com \
-    --no-csrf \
-    --no-ssrf \
-    --no-path-traversal \
-    --timeout 30
-```
+## Documentation
 
-### Advanced Reconnaissance Only
-```bash
-# Interactive module selection
-python -m vulnradar https://example.com --recon-only
+Complete documentation for all use cases:
 
-# Specific modules
-python -m vulnradar https://example.com \
-    --recon-only \
-    --recon-network \
-    --recon-security
+### **For New Users**
+- **📋 [Installation Guide](docs/INSTALLATION.md)** - Detailed setup instructions
+- **🚀 [Getting Started](docs/GETTING_STARTED.md)** - First scan walkthrough
+- **📖 [Usage Guide](docs/USAGE.md)** - Complete CLI reference
+- **⚙️ [Configuration](docs/CONFIGURATION.md)** - Configuration options reference
 
-# All modules
-python -m vulnradar https://example.com \
-    --recon-only \
-    --recon-all
-```
+### **Troubleshooting**
+- **❓ [Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
 
-### Fine-Tuned Reconnaissance
-```bash
-python -m vulnradar https://example.com \
-    --recon-only \
-    --recon-network \
-    --no-os-detection \
-    --no-script-scan \
-    --cache-dir ./recon_cache
-```
+### **Security**
+- **🔒 [Security Guide](docs/SECURITY.md)** - Legal and security considerations
 
-### Performance Optimization
+## System Requirements
 
-For slow targets:
-```bash
-python -m vulnradar https://slow-site.com --timeout 30 --max-workers 2
-```
+| Component | Requirement |
+|-----------|------------|
+| Python | 3.10 or higher |
+| OS | Windows, macOS, Linux |
+| Memory | 512 MB minimum, 2+ GB recommended |
+| Disk | 300 MB for installation |
+| Network | Active internet connection |
 
-For fast targets:
-```bash
-python -m vulnradar https://fast-site.com --timeout 5 --max-workers 15
-```
+### Optional Dependencies
+- **Selenium** - For JavaScript rendering (slower but more thorough)
+- **Nmap** - For advanced port scanning (requires separate installation)
 
-### Cache Management
-```bash
-# Clear cache before scan (but use cache during scan)
-python -m vulnradar https://example.com --clear-cache
+## Key Options
 
-# Disable caching completely
-python -m vulnradar https://example.com --no-cache
+| Option | Purpose | Default |
+|--------|---------|---------|
+| `--crawl-depth` | How deep to crawl the site | 3 |
+| `--max-workers` | Number of concurrent requests | 5 |
+| `--timeout` | Request timeout (seconds) | 10 |
+| `--use-selenium` | Enable JavaScript rendering | Disabled |
+| `--port-scan` | Perform port scanning | Disabled |
+| `--use-db` | Store results in database | Disabled |
+| `--cache-dir` | Cache directory path | cache |
 
-# Custom cache settings
-python -m vulnradar https://example.com \
-    --cache-dir ./my_cache \
-    --cache-ttl 7200
-```
+## License
 
-## Output Structure
+This project is licensed under the **GNU Affero General Public License v3.0** - see [LICENSE](LICENSE) file for details.
+- *Copyright (c) 2026 MykeChidi.*
 
-VulnRadar generates comprehensive reports in the specified output directory:
+### Key License Terms
+- ✅ Free to use, modify, and distribute
+- ⚠️ Must include license notice
+- ⚠️ Source code modifications must be shared
+- ⚠️ Network use is treated as distribution (AGPL specific)
+- ⚠️ No warranty provided
 
-```
-scan_results/
-├── example.com.html    # Interactive HTML report
-├── example.com.pdf     # PDF documentation
-├── example.com.json    # Machine-readable results
-├── example.com.xlsx    # Excel spreadsheet (if --excel)
-└── vulnradar.db        # SQLite database (if --use-db)
-```
+## Support & Issues
 
-### Report Contents
-- **Executive Summary** - High-level findings overview
-- **Reconnaissance Results** - DNS, ports, WAF detection, advanced recon findings
-- **Technology Stack** - Identified frameworks and libraries
-- **Endpoint Discovery** - All discovered URLs and paths
-- **Vulnerability Details** - Comprehensive vulnerability information including:
-  - Vulnerability type and severity
-  - Affected endpoints
-  - Proof of concept evidence
-  - Remediation recommendations
-  - Technical details and payloads
+- **Documentation**: See [docs/](docs/) directory
+- **Bug Reports**: [GitHub Issues](https://github.com/MykeChidi/vulnradar/issues)
+- **Questions**: Create a discussion or check existing issues
 
-## Configuration
+## Security & Legal
 
-### Timeout and Concurrency
-Adjust performance settings based on target responsiveness:
+⚠️ **IMPORTANT**: VulnRadar is for authorized security testing only. Unauthorized access to computer systems is illegal. Ensure you have explicit written permission before scanning any website or application.
 
-```bash
-# For slow targets
-python -m vulnradar https://slow-site.com --timeout 30 --max-workers 2
+For detailed security information, see [Security Guide](docs/SECURITY.md).
 
-# For fast targets
-python -m vulnradar https://fast-site.com --timeout 5 --max-workers 15
-```
+## Disclaimer
 
-## Best Practices
+This tool is provided "as is" for educational and authorized security testing purposes. Users are solely responsible for ensuring they have proper authorization before using this tool. The developers assume no liability for misuse or damage caused by this tool.
 
-### Ethical Usage
-- Only scan applications you own or have explicit permission to test
-- Respect rate limits and avoid overwhelming target servers
-- Follow responsible disclosure practices for discovered vulnerabilities
+---
 
-### Performance Optimization
-- Use appropriate `--max-workers` based on target capacity
-- Adjust `--timeout` values for target responsiveness
-- Consider `--crawl-depth` and `--max-crawl-pages` impact on scan duration
-- Enable caching for faster repeated scans
-- Clear cache periodically to avoid stale results
-
-### Authentication
-- Use `--cookies` parameter for authenticated scanning
-- Ensure session tokens remain valid throughout scan duration
-- Test both authenticated and unauthenticated attack surfaces
-
-### Reconnaissance Strategy
-- Start with `--recon-only` to understand the target
-- Use specific recon modules to focus on areas of interest
-- Disable unnecessary checks with fine-grained flags to speed up scans
-- Save recon results to database for future reference
-
-## Troubleshooting
-
-### Common Issues
-
-#### "Invalid target URL" Error
-- Ensure URL includes protocol (http:// or https://)
-- Verify target is accessible and responding
-- Check network connectivity and DNS resolution
-
-#### Selenium/ChromeDriver Issues
-```bash
-# Install ChromeDriver
-sudo apt-get install chromium-chromedriver
-
-# Or download manually and add to PATH
-export PATH=$PATH:/path/to/chromedriver
-```
-
-#### Memory Usage with Large Sites
-- Reduce `--max-workers` for memory-constrained environments
-- Decrease `--crawl-depth` and `--max-crawl-pages` for sites with many pages
-- Monitor system resources during scanning
-- Enable `--no-cache` if cache size becomes too large
-
-#### Database Permissions
-```bash
-# Ensure write permissions for database directory
-chmod 755 ./scan_results/
-```
-
-#### GUI Launch Issues
-- Ensure tkinter is installed: `sudo apt-get install python3-tk` (Linux)
-- On macOS, tkinter comes with Python
-- On Windows, tkinter is included in the standard Python installation
-
-## Contributing
-
-Contributions are welcome! Areas for improvement:
-- Additional vulnerability scanners
-- Enhanced reporting formats
-- Performance optimizations
-- False positive reduction
-- New reconnaissance techniques
-- Improved scanning techniques
-- GUI enhancements
-
-## Security Considerations
-
-- VulnRadar generates network traffic that may trigger security monitoring
-- Some vulnerability tests may cause temporary service disruption
-- Always obtain proper authorization before scanning
-- Review and understand payloads before deployment
-- Cache files may contain sensitive information - secure the cache directory
-
-## Legal Disclaimer
-
-This tool is intended for authorized security testing only. Users are required to:
-- Obtain proper written authorization before scanning any systems
-- Comply with all applicable laws and regulations
-- Use responsibly and ethically
-- Understand that unauthorized scanning may be illegal in your jurisdiction
+**VulnRadar** - Making web application security testing accessible and automated.

@@ -507,20 +507,21 @@ class VulnRadar:
                     # Create tasks for this batch
                     tasks = []
                     for endpoint in batch:
-                        # Check cache only if caching is enabled
-                        cached_result = None
                         cache_key = None
+
+                        # Check cache only if caching is enabled
                         if self.cache is not None:
                             cache_key = self.cache.generate_key(scanner_name, endpoint)
+                            cached_result = self.cache.get(cache_key)
 
-                        cached_result = self.cache.get(cache_key)
-                        if cached_result is not None:
-                            pbar.update(1)
-                            pbar.set_postfix(cached="yes")
-                            if cached_result:
-                                self.results["vulnerabilities"].extend(cached_result)
-                        else:
-                            tasks.append((endpoint, scanner.scan(endpoint), cache_key))
+                            if cached_result is not None:
+                                if cached_result:
+                                        all_vulnerabilities.extend(cached_result)
+                                pbar.update(1)
+                                pbar.set_postfix(cached="yes")
+                                continue  # Skip to next endpoint if cached
+                                
+                        tasks.append((endpoint, scanner.scan(endpoint), cache_key))
 
                     # Run tasks concurrently with a limit
                      # Run uncached scans
@@ -533,18 +534,13 @@ class VulnRadar:
                                 # Cache result if caching is enabled
                                 if self.cache is not None and cache_key is not None:
                                     self.cache.set(cache_key, result, ttl=3600)
-                                self.results["vulnerabilities"].extend(result)
+                                all_vulnerabilities.extend(result)
                             
                             pbar.update(1)
                             pbar.set_postfix(
                                 cached="no",
-                                found=len(self.results["vulnerabilities"])
+                                found=len(all_vulnerabilities)
                             )
-                    # Process results
-                    for result in results:
-                        if result and not isinstance(result, Exception):
-                            all_vulnerabilities.extend(result)
-                    pbar.update(len(batch))
 
         # Log cache statistics
         if self.cache is not None:

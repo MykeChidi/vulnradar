@@ -330,7 +330,7 @@ By using VulnRadar, you accept:
 If you find a security vulnerability in VulnRadar itself:
 
 1. **Don't** disclose publicly
-2. **Email** security@vulnradar.org with:
+2. **Email** vulnradarsec@gmail.com with:
    - Vulnerability description
    - Impact assessment
    - Proof of concept (if safe)

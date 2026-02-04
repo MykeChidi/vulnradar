@@ -252,8 +252,8 @@ class ErrorHandler:
             Tuple of (severity, category)
         """
         # Check the entire exception chain
-        current = error
-        while current:
+        current: Optional[Exception] = error
+        while current is not None:
             severity, category = self._classify_single_error(current)
             if category != ErrorCategory.UNKNOWN:
                 return severity, category
@@ -527,7 +527,7 @@ def handle_errors(
 
 
 def handle_async_errors(
-    error_handler: Optional[AsyncErrorHandler] = None,
+    error_handler: Optional[ErrorHandler] = None,
     user_message: Optional[str] = None,
     raise_on_error: bool = False,
     return_on_error: Any = None,
@@ -543,7 +543,10 @@ def handle_async_errors(
         return_on_error: Value to return if error occurs
         log_traceback: Whether to log traceback
     """
-    if error_handler:
+    # Ensure we use an AsyncErrorHandler internally
+    if error_handler is None:
+        error_handler = AsyncErrorHandler()
+    elif not isinstance(error_handler, AsyncErrorHandler):
         error_handler = AsyncErrorHandler()
     
     def decorator(func: Callable) -> Callable:

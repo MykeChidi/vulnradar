@@ -1,7 +1,7 @@
 # vulnradar/reconn/misc.py - Miscellaneous analysis techniques
 import aiohttp
 import asyncio
-from typing import Dict, List
+from typing import Any, Dict, List, Optional, Mapping
 import re
 from pathlib import Path
 from ..utils.logger import setup_logger
@@ -25,6 +25,7 @@ class MiscellaneousAnalyzer:
         self.logger = setup_logger("misc_analyzer", file_specific=True)
         self.rate_limiter = RateLimiter()
         # Initialize cache
+        self._cache: Optional[ScanCache]
         if not options.get("no_cache", False):
             cache_dir = Path(options.get("cache_dir", "cache")) / "misc"
             self._cache = ScanCache(cache_dir, default_ttl=options.get("cache_ttl", 3600))
@@ -62,7 +63,7 @@ class MiscellaneousAnalyzer:
         """
         Analyze application error handling and information disclosure.
         """
-        error_results = {
+        error_results: Dict[str, Any] = {
             "error_pages": {},
             "stack_traces": [],
             "information_leaks": [],
@@ -112,7 +113,7 @@ class MiscellaneousAnalyzer:
             
     async def _analyze_error_page(self, content: str, status_code: int) -> Dict:
         """Analyze an error page for sensitive information."""
-        result = {
+        result: Dict[str, Any] = {
             "status_code": status_code,
             "type": "custom" if len(content) > 100 else "default",
             "information_leaks": [],
@@ -168,7 +169,7 @@ class MiscellaneousAnalyzer:
         
     async def _identify_error_patterns(self, error_pages: Dict) -> Dict:
         """Identify patterns in error handling across different error types."""
-        patterns = {
+        patterns: Dict[str, Any] = {
             "consistent_handling": True,
             "custom_pages": False,
             "information_disclosure": [],
@@ -206,9 +207,9 @@ class MiscellaneousAnalyzer:
             
         return patterns
         
-    def _analyze_cache_headers(self, headers: Dict) -> Dict:
+    def _analyze_cache_headers(self, headers: Mapping[str, str]) -> Dict[str, Any]:
         """Analyze cache-related headers."""
-        cache_info = {
+        cache_info: Dict[str, Any] = {
             "headers": {},
             "directives": [],
             "issues": [],
@@ -250,14 +251,14 @@ class MiscellaneousAnalyzer:
         
     async def _test_cache_behavior(self, session: aiohttp.ClientSession) -> Dict:
         """Test caching behavior with various requests."""
-        results = {
+        results: Dict[str, Any] = {
             "browser_caching": {},
             "cdn_caching": {},
             "issues": []
         }
         
         # Test browser caching
-        async def test_with_headers(headers: Dict) -> Dict:
+        async def test_with_headers(headers: Mapping[str, str]) -> Dict[str, Any]:
             async with session.get(self.target.url, headers=headers) as response:
                 return {
                     "status": response.status,
@@ -285,7 +286,7 @@ class MiscellaneousAnalyzer:
         vulnerabilities = []
         
         # Test cases for cache poisoning
-        test_cases = [
+        test_cases: List[Dict[str, Any]] = [
             {
                 "name": "Host header manipulation",
                 "headers": {"Host": "evil.com"},
@@ -317,7 +318,7 @@ class MiscellaneousAnalyzer:
         
     async def _analyze_cdn_caching(self) -> Dict:
         """Analyze CDN caching behavior."""
-        cdn_results = {
+        cdn_results: Dict[str, Any] = {
             "provider": None,
             "caching_enabled": False,
             "cache_times": {},
@@ -370,7 +371,7 @@ class MiscellaneousAnalyzer:
         
     async def _detect_debug_mode(self) -> Dict:
         """Detect if application is running in debug mode."""
-        debug_info = {
+        debug_info: Dict[str, Any] = {
             "debug_mode": False,
             "evidence": [],
             "risk_level": "low"
@@ -442,7 +443,7 @@ class MiscellaneousAnalyzer:
         
     async def _check_dev_artifacts(self) -> Dict:
         """Check for development artifacts and exposed configuration files."""
-        artifacts = {
+        artifacts: Dict[str, Any] = {
             "found": [],
             "risk_level": "low",
             "recommendations": []
@@ -491,13 +492,13 @@ class MiscellaneousAnalyzer:
         
     async def _test_backend_behavior(self) -> Dict:
         """Test backend behavior for security issues."""
-        results = {
+        results: Dict[str, Any] = {
             "issues": [],
             "behaviors": {},
             "recommendations": []
         }
         
-        tests = [
+        tests: List[Dict[str, Any]] = [
             {
                 "name": "HTTP method support",
                 "method": "OPTIONS",
@@ -541,7 +542,7 @@ class MiscellaneousAnalyzer:
         
     async def _analyze_http_methods(self, response: aiohttp.ClientResponse) -> Dict:
         """Analyze supported HTTP methods."""
-        analysis = {
+        analysis: Dict[str, Any] = {
             "supported_methods": [],
             "issues": [],
             "recommendations": []
@@ -565,7 +566,7 @@ class MiscellaneousAnalyzer:
         
     async def _analyze_server_behavior(self, response: aiohttp.ClientResponse) -> Dict:
         """Analyze server behavior from response."""
-        analysis = {
+        analysis: Dict[str, Any] = {
             "server_info": {},
             "issues": [],
             "recommendations": []
@@ -591,7 +592,7 @@ class MiscellaneousAnalyzer:
         """
         Analyze caching behavior and potential cache-based vulnerabilities.
         """
-        cache_results = {
+        cache_results: Dict[str, Any] = {
             "headers": {},
             "behavior": {},
             "vulnerabilities": [],

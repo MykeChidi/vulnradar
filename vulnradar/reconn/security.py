@@ -3,7 +3,7 @@ import asyncio
 import ssl
 import socket
 import aiohttp
-from typing import Dict, List
+from typing import Dict, List, Any, Optional
 import OpenSSL
 import re
 from pathlib import Path
@@ -29,6 +29,7 @@ class SecurityInfrastructureAnalyzer:
         self.rate_limiter = RateLimiter()
         
         # Initialize cache
+        self._cache: Optional[ScanCache]
         if not options.get("no_cache", False):
             cache_dir = Path(options.get("cache_dir", "cache")) / "security"
             self._cache = ScanCache(cache_dir, default_ttl=options.get("cache_ttl", 3600))
@@ -66,7 +67,7 @@ class SecurityInfrastructureAnalyzer:
         """
         Enhanced WAF detection using multiple techniques.
         """
-        waf_results = {
+        waf_results: Dict[str, Any] = {
             "detected": False,
             "type": None,
             "confidence": 0,
@@ -78,12 +79,18 @@ class SecurityInfrastructureAnalyzer:
             header_results = await self._check_waf_headers()
             if header_results["detected"]:
                 waf_results.update(header_results)
+                # Ensure evidence remains a list to satisfy typing
+                if not isinstance(waf_results.get("evidence"), list):
+                    waf_results["evidence"] = []
                 
             # Behavioral analysis
             if not waf_results["detected"]:
                 behavior_results = await self._analyze_waf_behavior()
                 if behavior_results["detected"]:
                     waf_results.update(behavior_results)
+                    # Ensure evidence remains a list to satisfy typing
+                    if not isinstance(waf_results.get("evidence"), list):
+                        waf_results["evidence"] = []
                     
             # Rate limiting detection
             rate_limit_info = await self._detect_rate_limits()
@@ -108,14 +115,17 @@ class SecurityInfrastructureAnalyzer:
             "Sucuri": ["x-sucuri-id", "x-sucuri-cache"],
         }
         
-        result = {"detected": False, "type": None, "evidence": []}
+        result: Dict[str, Any] = {"detected": False, "type": None, "evidence": []}
         
         try:
             await self.rate_limiter.acquire()
             timeout = aiohttp.ClientTimeout(total=10)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 try:
-                    async with session.get(self.target.url, headers=self.options.get("headers", {})) as response:
+                    headers_param = self.options.get("headers", {})
+                    if not isinstance(headers_param, dict):
+                        headers_param = {}
+                    async with session.get(self.target.url, headers=headers_param) as response:
                         await self.rate_limiter.report_success()
                         headers = response.headers
                         for waf_name, signatures in waf_signatures.items():
@@ -130,7 +140,7 @@ class SecurityInfrastructureAnalyzer:
                         await self.rate_limiter.report_failure(is_rate_limit=True) 
                     else:
                         await self.rate_limiter.report_failure()
-                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                except (aiohttp.ClientError, asyncio.TimeoutError):
                     await self.rate_limiter.report_failure()
 
             return result
@@ -158,7 +168,7 @@ class SecurityInfrastructureAnalyzer:
             ("Path Test", "../test"),
         ]
         
-        result = {"detected": False, "type": None, "evidence": []}
+        result: Dict[str, Any] = {"detected": False, "type": None, "evidence": []}
         
         try:
             async with aiohttp.ClientSession() as session:
@@ -166,7 +176,10 @@ class SecurityInfrastructureAnalyzer:
                     url = f"{self.target.url}?test={payload}"
                     await self.rate_limiter.acquire()
                     try:
-                        async with session.get(url, headers=self.options.get("headers", {})) as response:
+                        headers_param = self.options.get("headers", {})
+                        if not isinstance(headers_param, dict):
+                            headers_param = {}
+                        async with session.get(url, headers=headers_param) as response:
                             await self.rate_limiter.report_success()
                             if response.status == 403 or response.status == 406:
                                 result["detected"] = True
@@ -177,7 +190,7 @@ class SecurityInfrastructureAnalyzer:
                             if any(sig in body.lower() for sig in ["blocked", "forbidden", "waf", "security block"]):
                                 result["detected"] = True
                                 result["evidence"].append(f"WAF block page detected for {attack_type}")
-                    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    except (aiohttp.ClientError, asyncio.TimeoutError):
                         await self.rate_limiter.report_failure()
                         continue
             return result
@@ -187,13 +200,16 @@ class SecurityInfrastructureAnalyzer:
             
     async def _detect_rate_limits(self) -> Dict:
         """Detect rate limiting by sending rapid requests."""
-        result = {"detected": False, "evidence": []}
+        result: Dict[str, Any] = {"detected": False, "evidence": []}
         
         try:
             async with aiohttp.ClientSession() as session:
                 tasks = []
+                headers_param = self.options.get("headers", {})
+                if not isinstance(headers_param, dict):
+                    headers_param = {}
                 for _ in range(20):  # Send 20 requests rapidly
-                    tasks.append(session.get(self.target.url, headers=self.options.get("headers", {})))
+                    tasks.append(session.get(self.target.url, headers=headers_param))
                     
                 responses = await asyncio.gather(*tasks, return_exceptions=True)
                 
@@ -226,7 +242,7 @@ class SecurityInfrastructureAnalyzer:
         """
         Comprehensive SSL/TLS analysis.
         """
-        ssl_results = {
+        ssl_results: Dict[str, Any] = {
             "protocols": {},
             "cipher_suites": [],
             "certificate": {},
@@ -297,7 +313,9 @@ class SecurityInfrastructureAnalyzer:
                 result = await loop.run_in_executor(None, test_connection)
                 results[protocol_name] = result
                 
-                self.logger.debug(f"{protocol_name}: Supported (cipher: {result['cipher'][0]})")
+                cipher_val = result.get('cipher')
+                cipher_name = cipher_val[0] if isinstance(cipher_val, (list, tuple)) and len(cipher_val) > 0 else "unknown"
+                self.logger.debug(f"{protocol_name}: Supported (cipher: {cipher_name})")
                 
             except ssl.SSLError as e:
                 error_msg = str(e)
@@ -358,7 +376,7 @@ class SecurityInfrastructureAnalyzer:
         Returns:
             Security assessment
         """
-        assessment = {
+        assessment: Dict[str, Any] = {
             "secure": True,
             "warnings": [],
             "recommendations": []
@@ -388,7 +406,7 @@ class SecurityInfrastructureAnalyzer:
     async def _analyze_certificate(self) -> Dict:
         """Analyze SSL certificate details."""
         try:
-            cert_info = {}
+            cert_info: Dict[str, Any] = {}
             context = ssl.create_default_context()
             with socket.create_connection((self.target.hostname, 443)) as sock:
                 with context.wrap_socket(sock, server_hostname=self.target.hostname) as ssock:
@@ -397,8 +415,32 @@ class SecurityInfrastructureAnalyzer:
                     if not cert:
                         return {"error": "no_certificate", "message": "No certificate presented by server"}
                 
-                    cert_info["subject"] = dict(x[0] for x in cert["subject"])
-                    cert_info["issuer"] = dict(x[0] for x in cert["issuer"])
+                    # Safely build subject and issuer dictionaries
+                    subjects_raw: Any = cert.get("subject", [])
+                    if isinstance(subjects_raw, list):
+                        subjects: List[Any] = subjects_raw
+                    else:
+                        subjects = [subjects_raw]
+                    subject_dict: Dict[str, str] = {}
+                    for item in subjects:
+                        if isinstance(item, (list, tuple)) and item:
+                            first = item[0]
+                            if isinstance(first, (list, tuple)) and len(first) >= 2:
+                                subject_dict[str(first[0])] = str(first[1])
+                    cert_info["subject"] = subject_dict
+
+                    issuers_raw: Any = cert.get("issuer", [])
+                    if isinstance(issuers_raw, list):
+                        issuers: List[Any] = issuers_raw
+                    else:
+                        issuers = [issuers_raw]
+                    issuer_dict: Dict[str, str] = {}
+                    for item in issuers:
+                        if isinstance(item, (list, tuple)) and item:
+                            first = item[0]
+                            if isinstance(first, (list, tuple)) and len(first) >= 2:
+                                issuer_dict[str(first[0])] = str(first[1])
+                    cert_info["issuer"] = issuer_dict
                     cert_info["version"] = cert["version"]
                     cert_info["serialNumber"] = cert["serialNumber"]
                     cert_info["notBefore"] = cert["notBefore"]
@@ -407,11 +449,14 @@ class SecurityInfrastructureAnalyzer:
                     
                     # Get the certificate in DER format
                     der_cert = ssock.getpeercert(binary_form=True)
+                    if not der_cert:
+                        return {"error": "no_certificate", "message": "No certificate presented by server"}
+
                     x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, der_cert)
-                    
+
                     # Get signature algorithm
                     cert_info["signatureAlgorithm"] = x509.get_signature_algorithm().decode()
-                    
+
                     # Get public key details
                     pubkey = x509.get_pubkey()
                     cert_info["publicKeySize"] = pubkey.bits()
@@ -435,7 +480,7 @@ class SecurityInfrastructureAnalyzer:
                 context={"hostname": self.target.hostname, "error_type": "dns_resolution_failed"}
             )
             return {"error": "dns_failed", "message": "Cannot resolve hostname"}
-        except ConnectionRefusedError as e:
+        except ConnectionRefusedError:
             error_msg = f"Connection refused on {self.target.hostname}:443"
             self.logger.error(error_msg)
             error_handler.handle_error(
@@ -555,16 +600,19 @@ class SecurityInfrastructureAnalyzer:
             context = ssl.create_default_context()
             
             # Force TLS 1.0 to check BEAST vulnerability
-            context.minimum_version = ssl.TLSVersion.TLSv1_0
-            context.maximum_version = ssl.TLSVersion.TLSv1_0
+            context.minimum_version = ssl.TLSVersion.TLSv1
+            context.maximum_version = ssl.TLSVersion.TLSv1
             
             with socket.create_connection((self.target.hostname, 443)) as sock:
                 try:
                     with context.wrap_socket(sock, server_hostname=self.target.hostname) as ssock:
                         # Check if using CBC cipher
                         cipher = ssock.cipher()
-                        cipher_name = cipher[0].upper()
-                        
+                        if isinstance(cipher, (list, tuple)) and len(cipher) > 0:
+                            cipher_name = str(cipher[0]).upper()
+                        else:
+                            cipher_name = ""
+
                         # BEAST affects CBC ciphers in TLS 1.0
                         is_vulnerable = (
                             "CBC" in cipher_name and
@@ -591,7 +639,9 @@ class SecurityInfrastructureAnalyzer:
             await self.rate_limiter.acquire()
             async with aiohttp.ClientSession() as session:
                 try:
-                    async with session.get(self.target.url, timeout=10) as response:
+                    timeout = aiohttp.ClientTimeout(total=10)
+                    timeout = aiohttp.ClientTimeout(total=10)
+                    async with session.get(self.target.url, timeout=timeout) as response:
                         await self.rate_limiter.report_success()
                         server_header = response.headers.get("Server", "").lower()
                         
@@ -611,6 +661,8 @@ class SecurityInfrastructureAnalyzer:
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                     await self.rate_limiter.report_failure()
                     self.logger.debug(f"Could not check headers: {str(e)}")
+
+
             try:
                 # Check SSL certificate and handshake details
                 # First, get OpenSSL version from the certificate
@@ -624,13 +676,16 @@ class SecurityInfrastructureAnalyzer:
                         # Log for manual review
                         self.logger.debug(f"SSL Version: {ssl_version}, Cipher: {cipher}")
                         cert = ssock.getpeercert(binary_form=True)
-                        x509 = OpenSSL.crypto.load_certificate(
-                            OpenSSL.crypto.FILETYPE_ASN1,
-                            cert
-                        )
-                        # Get certificate signature algorithm
-                        sig_alg = x509.get_signature_algorithm().decode()
-                        self.logger.debug(f"Certificate signature algorithm: {sig_alg}")
+                        if cert:
+                            x509 = OpenSSL.crypto.load_certificate(
+                                OpenSSL.crypto.FILETYPE_ASN1,
+                                cert
+                            )
+                            # Get certificate signature algorithm
+                            sig_alg = x509.get_signature_algorithm().decode()
+                            self.logger.debug(f"Certificate signature algorithm: {sig_alg}")
+                        else:
+                            self.logger.debug("No certificate in handshake; skipping x509 checks")
 
                         # Check server software from response headers
                         async with aiohttp.ClientSession() as session:
@@ -658,7 +713,8 @@ class SecurityInfrastructureAnalyzer:
             # by examining server behavior patterns (passive)
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(self.target.url, timeout=10) as response:
+                    timeout = aiohttp.ClientTimeout(total=10)
+                    async with session.get(self.target.url, timeout=timeout) as response:
                         # Check for other headers that might indicate old software
                         headers_to_check = [
                             "X-Powered-By",
@@ -681,10 +737,8 @@ class SecurityInfrastructureAnalyzer:
                                 
                                 for pattern in vulnerable_patterns:
                                     if pattern in value:
-                                        self.logger.warning(
-                                            f"Server may be running OS version that shipped with vulnerable OpenSSL"
-                                        )
-                                        
+                                        self.logger.warning("Server may be running OS version that shipped with vulnerable OpenSSL")
+                    
             except (aiohttp.ClientError, asyncio.TimeoutError):
                 pass
 
@@ -701,15 +755,20 @@ class SecurityInfrastructureAnalyzer:
             context = ssl.create_default_context()
             with socket.create_connection((self.target.hostname, 443)) as sock:
                 with context.wrap_socket(sock, server_hostname=self.target.hostname) as ssock:
-                    cipher_name = ssock.cipher()[0]
-                    cipher_bits = ssock.cipher()[2]
+                    cipher = ssock.cipher()
+                    if isinstance(cipher, (list, tuple)) and len(cipher) >= 3:
+                        cipher_name = cipher[0]
+                        cipher_bits = cipher[2]
+                    else:
+                        cipher_name = "unknown"
+                        cipher_bits = 0
                     
                     ciphers.append({
                         "name": cipher_name,
                         "bits": cipher_bits,
                         "security_level": self._assess_cipher_security(cipher_name, cipher_bits)
                     })
-                    
+
             return ciphers
             
         except Exception as e:
@@ -733,11 +792,15 @@ class SecurityInfrastructureAnalyzer:
         """
         Analyze security-related HTTP headers.
         """
-        headers_results = {
-            "present": {},
-            "missing": [],
-            "misconfigured": [],
-            "recommendations": []
+        present: Dict[str, Any] = {}
+        missing: List[str] = []
+        misconfigured: List[Dict[str, Any]] = []
+        recommendations: List[str] = []
+        headers_results: Dict[str, Any] = {
+            "present": present,
+            "missing": missing,
+            "misconfigured": misconfigured,
+            "recommendations": recommendations,
         }
         
         try:
@@ -780,7 +843,9 @@ class SecurityInfrastructureAnalyzer:
             
     async def _check_hsts(self, value: str) -> Dict:
         """Check HSTS header configuration."""
-        result = {"valid": False, "issues": [], "recommendations": []}
+        result: Dict[str, Any] = {"valid": False, "issues": [], "recommendations": []}
+        issues: List[str] = []
+        recommendations: List[str] = []
         
         try:
             directives = [d.strip() for d in value.split(";")]
@@ -802,25 +867,29 @@ class SecurityInfrastructureAnalyzer:
             result["preload"] = preload
             
             # Check for best practices
-            if max_age < 31536000:  # Less than 1 year
-                result["issues"].append("max-age is less than 1 year")
-                result["recommendations"].append("Increase max-age to at least 31536000 seconds (1 year)")
+            if isinstance(max_age, int) and max_age < 31536000:  # Less than 1 year
+                issues.append("max-age is less than 1 year")
+                recommendations.append("Increase max-age to at least 31536000 seconds (1 year)")
                 
             if not include_subdomains:
-                result["recommendations"].append("Consider adding includeSubDomains directive")
+                recommendations.append("Consider adding includeSubDomains directive")
                 
             if not preload:
-                result["recommendations"].append("Consider adding preload directive for maximum security")
+                recommendations.append("Consider adding preload directive for maximum security")
                 
         except Exception as e:
             result["valid"] = False
-            result["issues"].append(f"Invalid HSTS header: {str(e)}")
+            issues.append(f"Invalid HSTS header: {str(e)}")
             
+        result["issues"] = issues
+        result["recommendations"] = recommendations
         return result
         
     async def _check_csp(self, value: str) -> Dict:
         """Check Content Security Policy configuration."""
-        result = {"valid": False, "directives": {}, "issues": [], "recommendations": []}
+        result: Dict[str, Any] = {"valid": False, "directives": {}, "issues": [], "recommendations": []}
+        issues: List[str] = []
+        recommendations: List[str] = []
         
         try:
             directives = [d.strip() for d in value.split(";")]
@@ -835,27 +904,29 @@ class SecurityInfrastructureAnalyzer:
                         
             # Check for common security issues
             if "default-src" not in result["directives"]:
-                result["issues"].append("Missing default-src directive")
-                result["recommendations"].append("Add default-src directive")
+                issues.append("Missing default-src directive")
+                recommendations.append("Add default-src directive")
                 
             if "'unsafe-inline'" in str(result["directives"]):
-                result["issues"].append("Uses unsafe-inline which is not recommended")
-                result["recommendations"].append("Remove 'unsafe-inline' and use nonces or hashes instead")
+                issues.append("Uses unsafe-inline which is not recommended")
+                recommendations.append("Remove 'unsafe-inline' and use nonces or hashes instead")
                 
             if "'unsafe-eval'" in str(result["directives"]):
-                result["issues"].append("Uses unsafe-eval which is not recommended")
-                result["recommendations"].append("Remove 'unsafe-eval' and refactor code to avoid eval()")
+                issues.append("Uses unsafe-eval which is not recommended")
+                recommendations.append("Remove 'unsafe-eval' and refactor code to avoid eval()")
                 
             result["valid"] = True
             
         except Exception as e:
-            result["issues"].append(f"Invalid CSP header: {str(e)}")
+            issues.append(f"Invalid CSP header: {str(e)}")
             
+        result["issues"] = issues
+        result["recommendations"] = recommendations
         return result
         
     async def _check_xfo(self, value: str) -> Dict:
         """Check X-Frame-Options header configuration."""
-        result = {"valid": False, "issues": [], "recommendations": []}
+        result: Dict[str, Any] = {"valid": False, "issues": [], "recommendations": []}
         
         valid_values = ["DENY", "SAMEORIGIN"]
         value = value.upper()
@@ -871,7 +942,7 @@ class SecurityInfrastructureAnalyzer:
         
     async def _check_xcto(self, value: str) -> Dict:
         """Check X-Content-Type-Options header configuration."""
-        result = {"valid": False, "issues": [], "recommendations": []}
+        result: Dict[str, Any] = {"valid": False, "issues": [], "recommendations": []}
         
         if value.lower() == "nosniff":
             result["valid"] = True
@@ -883,7 +954,7 @@ class SecurityInfrastructureAnalyzer:
         
     async def _check_xss_protection(self, value: str) -> Dict:
         """Check X-XSS-Protection header configuration."""
-        result = {"valid": False, "issues": [], "recommendations": []}
+        result: Dict[str, Any] = {"valid": False, "issues": [], "recommendations": []}
         
         try:
             parts = value.split(";")
@@ -910,7 +981,7 @@ class SecurityInfrastructureAnalyzer:
         
     async def _check_referrer_policy(self, value: str) -> Dict:
         """Check Referrer-Policy header configuration."""
-        result = {"valid": False, "issues": [], "recommendations": []}
+        result: Dict[str, Any] = {"valid": False, "issues": [], "recommendations": []}
         
         valid_values = [
             "no-referrer",

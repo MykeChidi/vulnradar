@@ -1,7 +1,7 @@
 # vulnradar/scanners/base.py - Base Scanner class
 
 import abc
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import aiohttp
 from bs4 import BeautifulSoup
@@ -14,7 +14,7 @@ error_handler = get_global_error_handler()
 class BaseScanner(abc.ABC):
     """Base class for vulnerability scanners."""
     
-    def __init__(self, headers: Dict = None, timeout: int = 10):
+    def __init__(self, headers: Optional[Dict] = None, timeout: int = 10):
         """
         Initialize the scanner.
         
@@ -23,7 +23,8 @@ class BaseScanner(abc.ABC):
             timeout: Request timeout in seconds
         """
         self.headers = headers or {}
-        self.timeout = timeout
+        # store an aiohttp.ClientTimeout so call-sites can pass it directly
+        self.timeout: aiohttp.ClientTimeout = aiohttp.ClientTimeout(total=timeout, connect=5, sock_read=timeout)
         
         
     @abc.abstractmethod
@@ -65,9 +66,8 @@ class BaseScanner(abc.ABC):
             List[Dict]: List of forms with their inputs
         """
         try:
-            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
-                async with session.get(url, timeout=self.timeout) as response:
+            async with aiohttp.ClientSession(headers=self.headers, timeout=self.timeout) as session:
+                async with session.get(url) as response:
                     if response.status != 200:
                         return []
                         

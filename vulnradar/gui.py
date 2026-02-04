@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 import asyncio
 import threading
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import queue
 from datetime import datetime
 
@@ -678,13 +678,13 @@ class VulnRadarGUI:
         self.log_text.insert(tk.END, formatted_msg, level)
         self.log_text.see(tk.END)
         
-    def update_status(self, message: str, color: str = None):
+    def update_status(self, message: str, color: Optional[str] = None):
         """Update status indicator"""
         self.status_label.config(text=message)
         if color:
             self.status_indicator.itemconfig(self.status_circle, fill=color)
         
-    def update_stats(self, endpoints: int = None, vulns: int = None):
+    def update_stats(self, endpoints: Optional[int] = None, vulns: Optional[int] = None):
         """Update statistics display"""
         if endpoints is not None:
             self.stat_labels['endpoints'].config(text=str(endpoints))
@@ -847,7 +847,7 @@ class VulnRadarGUI:
                 
                 # Show summary
                 if vulns_count > 0:
-                    severity_summary = {}
+                    severity_summary: Dict[str, Any]= {}
                     for vuln in results.get('vulnerabilities', []):
                         sev = vuln.get('severity', 'Unknown')
                         severity_summary[sev] = severity_summary.get(sev, 0) + 1

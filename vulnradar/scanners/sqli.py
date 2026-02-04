@@ -1,7 +1,7 @@
 # vulnradar/scanners/sqli.py - SQL Injection Scanner
 
 import re
-from typing import Dict, List
+from typing import Dict, List ,Optional
 
 import aiohttp
 from .base import BaseScanner
@@ -15,7 +15,7 @@ error_handler = get_global_error_handler()
 class SQLInjectionScanner(BaseScanner):
     """Scanner for SQL Injection vulnerabilities."""
     
-    def __init__(self, headers: Dict = None, timeout: int = 10):
+    def __init__(self, headers: Optional[Dict] = None, timeout: int = 10):
         """Initialize the SQL injection scanner."""
         super().__init__(headers, timeout)
         
@@ -93,9 +93,13 @@ class SQLInjectionScanner(BaseScanner):
                 
                 # Make the request
                 try:
-                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
-                        async with session.get(test_url, timeout=self.timeout) as response:
+                    if isinstance(self.timeout, aiohttp.ClientTimeout):
+                        base = self.timeout.total or 0
+                    else:
+                        base = self.timeout
+                    timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
+                        async with session.get(test_url) as response:
                             response_text = await response.text()
                             
                             # Check for SQL errors in the response
@@ -155,10 +159,14 @@ class SQLInjectionScanner(BaseScanner):
                         
                 # Make the request
                 try:
-                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
+                    if isinstance(self.timeout, aiohttp.ClientTimeout):
+                        base = self.timeout.total or 0
+                    else:
+                        base = self.timeout
+                    timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
                         if form.get("method") == "post":
-                            async with session.post(action_url, data=form_data, timeout=self.timeout) as response:
+                            async with session.post(action_url, data=form_data) as response:
                                 response_text = await response.text()
                                 
                                 # Check for SQL errors in the response
@@ -179,7 +187,7 @@ class SQLInjectionScanner(BaseScanner):
                                     break
                         else:
                             # Handle GET forms
-                            async with session.get(action_url, params=form_data, timeout=self.timeout) as response:
+                            async with session.get(action_url, params=form_data) as response:
                                 response_text = await response.text()
                                 
                                 # Check for SQL errors in the response
@@ -279,9 +287,13 @@ class SQLInjectionScanner(BaseScanner):
                 test_url = urlunparse(test_parts)
                 
                 # Make the request
-                timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
-                    async with session.get(test_url, timeout=self.timeout) as response:
+                if isinstance(self.timeout, aiohttp.ClientTimeout):
+                    base = self.timeout.total or 0
+                else:
+                    base = self.timeout
+                timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
+                    async with session.get(test_url) as response:
                         response_text = await response.text()
                         
                         # Check for SQL errors in the response
@@ -301,8 +313,13 @@ class SQLInjectionScanner(BaseScanner):
                     test_url = urlunparse(test_parts)
                     
                     # Make the request
-                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
-                        async with session.get(test_url, timeout=self.timeout) as response:
+                    if isinstance(self.timeout, aiohttp.ClientTimeout):
+                        base = self.timeout.total or 0
+                    else:
+                        base = self.timeout
+                    timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
+                        async with session.get(test_url) as response:
                             response_text = await response.text()
                             
                             # Check for SQL errors in the response

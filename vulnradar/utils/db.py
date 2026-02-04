@@ -4,13 +4,14 @@ from sqlalchemy import Column, Integer, String, Text, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
+from typing import Any
 from .logger import setup_logger
 from .error_handler import get_global_error_handler, handle_errors, DatabaseError
 
 
 logger = setup_logger("Database", log_to_file=False)
 error_handler = get_global_error_handler()
-Base = declarative_base()
+Base: Any = declarative_base()
 
 class Vulnerability(Base):
     __tablename__ = "vulnerabilities"
@@ -78,7 +79,7 @@ class VulnradarDatabase:
                 severity=severity,
                 description=description[:4096],
                 evidence=evidence[:8192],
-                remediation=remediation[:4096]
+                remediation=remediation[:8192]
             )
             session.add(vuln)
             session.commit()

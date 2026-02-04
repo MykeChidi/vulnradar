@@ -1,6 +1,6 @@
 # vulnradar/scanners/csrf.py - CSRF Scanner
 
-from typing import Dict, List
+from typing import Dict, List, Optional, Any
 import aiohttp
 from .base import BaseScanner
 from ..utils.error_handler import get_global_error_handler, handle_async_errors, ScanError
@@ -12,7 +12,7 @@ error_handler = get_global_error_handler()
 class CSRFScanner(BaseScanner):
     """Scanner for Cross-Site Request Forgery (CSRF) vulnerabilities."""
     
-    def __init__(self, headers: Dict = None, timeout: int = 10):
+    def __init__(self, headers: Optional[Dict] = None, timeout: int = 10):
         """Initialize CSRF scanner."""
         super().__init__(headers, timeout)
         
@@ -116,7 +116,7 @@ class CSRFScanner(BaseScanner):
                 
         return False
     
-    async def _test_missing_csrf_token(self, url: str, form: Dict) -> Dict:
+    async def _test_missing_csrf_token(self, url: str, form: Dict) -> Optional[Dict[str, Any]]:
         """
         Test for missing CSRF token vulnerability.
         
@@ -137,13 +137,16 @@ class CSRFScanner(BaseScanner):
                     form_data[input_field['name']] = 'csrf_test_value'
             
             # Submit form without CSRF token
-            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
+            if isinstance(self.timeout, aiohttp.ClientTimeout):
+                base = self.timeout.total or 0
+            else:
+                base = self.timeout
+            timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
                 if form['method'].lower() == 'post':
                     async with session.post(
                         form['action'] or url,
                         data=form_data,
-                        timeout=self.timeout,
                         allow_redirects=False
                     ) as response:
                         response_text = await response.text()
@@ -169,7 +172,7 @@ class CSRFScanner(BaseScanner):
             
         return None
     
-    async def _test_csrf_token_validation(self, url: str, form: Dict) -> Dict:
+    async def _test_csrf_token_validation(self, url: str, form: Dict) -> Optional[Dict[str, Any]]:
         """
         Test CSRF token validation bypass.
         
@@ -225,7 +228,7 @@ class CSRFScanner(BaseScanner):
             
         return None
     
-    async def _test_referrer_bypass(self, url: str, form: Dict) -> Dict:
+    async def _test_referrer_bypass(self, url: str, form: Dict) -> Optional[Dict[str, Any]]:
         """
         Test for referrer header bypass vulnerability.
         
@@ -246,13 +249,16 @@ class CSRFScanner(BaseScanner):
             test_headers = self.headers.copy()
             test_headers['Referer'] = 'https://evil.com'
             
-            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-            async with aiohttp.ClientSession(headers=test_headers, timeout=timeout) as session:
+            if isinstance(self.timeout, aiohttp.ClientTimeout):
+                base = self.timeout.total or 0
+            else:
+                base = self.timeout
+            timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+            async with aiohttp.ClientSession(headers=test_headers, timeout=timeout_obj) as session:
                 if form['method'].lower() == 'post':
                     async with session.post(
                         form['action'] or url,
                         data=form_data,
-                        timeout=self.timeout,
                         allow_redirects=False
                     ) as response:
                         if response.status in [200, 201, 302, 303]:
@@ -275,7 +281,7 @@ class CSRFScanner(BaseScanner):
             
         return None
     
-    async def _submit_csrf_test(self, url: str, form: Dict, test_data: Dict, test_type: str) -> Dict:
+    async def _submit_csrf_test(self, url: str, form: Dict, test_data: Dict, test_type: str) -> Optional[Dict[str, Any]]:
         """
         Submit a CSRF test and check for vulnerability.
         
@@ -289,13 +295,16 @@ class CSRFScanner(BaseScanner):
             Dict: Vulnerability information if found, None otherwise
         """
         try:
-            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
+            if isinstance(self.timeout, aiohttp.ClientTimeout):
+                base = self.timeout.total or 0
+            else:
+                base = self.timeout
+            timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
                 if form['method'].lower() == 'post':
                     async with session.post(
                         form['action'] or url,
                         data=test_data,
-                        timeout=self.timeout,
                         allow_redirects=False
                     ) as response:
                         if response.status in [200, 201, 302, 303]:
@@ -344,13 +353,16 @@ class CSRFScanner(BaseScanner):
                     # Test if we can still submit without proper CSRF protection
                     test_data = eval(payload) if payload.startswith('{') else {}
                     
-                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                    if isinstance(self.timeout, aiohttp.ClientTimeout):
+                        base = self.timeout.total
+                    else:
+                        base = self.timeout
+                    timeout = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
                     async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                         if form['method'].lower() == 'post':
                             async with session.post(
                                 form['action'] or url,
                                 data=test_data,
-                                timeout=self.timeout,
                                 allow_redirects=False
                             ) as response:
                                 return response.status in [200, 201, 302, 303]

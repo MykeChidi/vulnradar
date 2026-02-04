@@ -2,7 +2,7 @@
 
 import asyncio
 from collections import deque
-from typing import Dict, Generator, List, Tuple
+from typing import Dict, AsyncGenerator, List, Tuple, Optional
 from urllib.parse import urljoin, urlparse
 
 import aiohttp
@@ -23,7 +23,7 @@ error_handler = get_global_error_handler()
 class WebCrawler:
     """Crawler for discovering endpoints on a website."""
     
-    def __init__(self, base_url: str, headers: Dict = None, max_depth: int = 3, 
+    def __init__(self, base_url: str, headers: Optional[Dict] = None, max_depth: int = 3, 
                  timeout: int = 10, use_selenium: bool = False, max_pages: int = 1000):
         """
         Initialize the web crawler.
@@ -43,7 +43,7 @@ class WebCrawler:
         self.use_selenium = use_selenium
         self.max_pages = max_pages
         self.page_count = 0
-        self.visited_urls = set()
+        self.visited_urls: set = set()
         self.to_visit = deque([(base_url, 0)], maxlen=max_pages * 2)  # (url, depth)
         self._url_limit_reached = False
         self.base_domain = urlparse(base_url).netloc
@@ -116,7 +116,7 @@ class WebCrawler:
             finally:
                 self.driver = None
     
-    async def crawl(self) -> Generator[Tuple[str, int], None, None]: # type: ignore
+    async def crawl(self) -> AsyncGenerator[Tuple[str, int], None]:
         """
         Crawl the website and yield discovered URLs with their status codes.
         

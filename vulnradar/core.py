@@ -4,7 +4,7 @@
 import asyncio
 import time
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional, Set, Type, Any
 
 import aiohttp
 import colorama
@@ -17,6 +17,7 @@ from wafw00f.main import WAFW00F
 # Import custom modules
 from .crawlers import WebCrawler
 from .detector import TechDetector
+from .scanners.base import BaseScanner
 from .scanners.csrf import CSRFScanner
 from .scanners.file_inclusion import FileInclusionScanner
 from .scanners.comm_injection import CommandInjectionScanner
@@ -56,12 +57,12 @@ class VulnRadar:
         """
         self.target_url = target_url
         self.options = options
-        self.results = {
+        self.results: Dict[str, Any] = {
             "target": target_url,
             "scan_time": time.strftime("%d-%m-%Y %H:%M:%S"),
             "vulnerabilities": [],
             "reconnaissance": {},
-            "endpoints": set(),
+            "endpoints": [],
             "technologies": {},
         }
         
@@ -87,7 +88,8 @@ class VulnRadar:
         if options.get("cookies"):
             self.headers["Cookie"] = Validator.validate_header_value(
                 options["cookies"], "Cookie")
-            
+
+        self.db: Optional[VulnradarDatabase] = None    
         # Database connection
         if options.get("use_db", False):
             self.db = VulnradarDatabase(options.get("db_path", "vulnradar.db"))
@@ -102,6 +104,7 @@ class VulnRadar:
             options.get("output_dir", "scan_results"))
         self.output_dir.mkdir(exist_ok=True, mode=0o755)
         
+        self.cache: Optional[ScanCache] = None
         # Initialize cache
         if not options.get("no_cache", False):
             cache_dir = Path(options.get("cache_dir", "cache"))
@@ -172,7 +175,7 @@ class VulnRadar:
         if self.options.get("recon_only", False):
             logger.info(f"{Fore.YELLOW}Running in advanced reconnaissance only mode{Style.RESET_ALL}")
             await self.advanced_recon()
-            return
+            return self.results
         
         # Step 3: Crawl and identify endpoints
         logger.info(f"{Fore.BLUE}Crawling website for endpoints...{Style.RESET_ALL}")
@@ -318,12 +321,12 @@ class VulnRadar:
         try:
             # A records
             a_records = dns.resolver.resolve(hostname, 'A')
-            dns_results['A'] = [r.address for r in a_records]
+            dns_results['A'] = [str(r.address) for r in a_records if hasattr(r, 'address')]
             
             # MX records
             try:
                 mx_records = dns.resolver.resolve(hostname, 'MX')
-                dns_results['MX'] = [str(r.exchange) for r in mx_records]
+                dns_results['MX'] = [str(r.exchange) for r in mx_records if hasattr(r, 'exchange')]
             except dns.resolver.NoAnswer:
                 dns_results['MX'] = []
             
@@ -411,7 +414,7 @@ class VulnRadar:
         
         # Use set with maximum size to prevent memory overflow
         max_endpoints = 10000
-        endpoints_seen = set()
+        endpoints_seen: Set[str] = set()
 
         with tqdm(desc="Crawling website", unit="pages") as pbar:
             async for url, status_code in crawler.crawl():
@@ -443,7 +446,7 @@ class VulnRadar:
     
     async def run_vulnerability_scans(self) -> None:
         """Run all selected vulnerability scans."""
-        scanners = []
+        scanners: List[BaseScanner] = []
         
         # Initialize selected scanners
         if self.options.get("scan_sqli", True):
@@ -583,7 +586,7 @@ class VulnRadar:
         
         for vuln in vulnerabilities:
             # Basic validation: re-test the vulnerability
-            scanner_class = None
+            scanner_class: Optional[Type[BaseScanner]] = None
             
             if vuln["type"] == "SQL Injection":
                 scanner_class = SQLInjectionScanner

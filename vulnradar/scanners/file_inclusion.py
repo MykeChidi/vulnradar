@@ -3,7 +3,7 @@
 import asyncio
 import re
 import urllib.parse
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import aiohttp
 
@@ -18,7 +18,7 @@ error_handler = get_global_error_handler()
 class FileInclusionScanner(BaseScanner):
     """Scanner for Local File Inclusion (LFI) and Remote File Inclusion (RFI) vulnerabilities."""
     
-    def __init__(self, headers: Dict = None, timeout: int = 10):
+    def __init__(self, headers: Optional[Dict] = None, timeout: int = 10):
         super().__init__(headers, timeout)
         
         # Common LFI payloads
@@ -135,9 +135,13 @@ class FileInclusionScanner(BaseScanner):
                     parsed_url.params, new_query, parsed_url.fragment
                 ))
                 
-                timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
-                    async with session.get(test_url, timeout=self.timeout) as response:
+                if isinstance(self.timeout, aiohttp.ClientTimeout):
+                    base = self.timeout.total or 0
+                else:
+                    base = self.timeout
+                timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
+                    async with session.get(test_url) as response:
                         response_text = await response.text()
                         
                         # Check for LFI indicators
@@ -176,9 +180,13 @@ class FileInclusionScanner(BaseScanner):
                     parsed_url.params, new_query, parsed_url.fragment
                 ))
                 
-                timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
-                    async with session.get(test_url, timeout=self.timeout) as response:
+                if isinstance(self.timeout, aiohttp.ClientTimeout):
+                    base = self.timeout.total or 0
+                else:
+                    base = self.timeout
+                timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
+                    async with session.get(test_url) as response:
                         response_text = await response.text()
                         
                         # Check for RFI indicators
@@ -215,13 +223,17 @@ class FileInclusionScanner(BaseScanner):
                         form_data[field['name']] = field['value'] or 'test'
                 
                 # Submit form
-                timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
+                if isinstance(self.timeout, aiohttp.ClientTimeout):
+                    base = self.timeout.total or 0
+                else:
+                    base = self.timeout
+                timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
                     if form['method'] == 'post':
-                        async with session.post(form['action'], data=form_data, timeout=self.timeout) as response:
+                        async with session.post(form['action'], data=form_data) as response:
                             response_text = await response.text()
                     else:
-                        async with session.get(form['action'], params=form_data, timeout=self.timeout) as response:
+                        async with session.get(form['action'], params=form_data) as response:
                             response_text = await response.text()
                     
                     # Check for LFI indicators
@@ -258,13 +270,17 @@ class FileInclusionScanner(BaseScanner):
                         form_data[field['name']] = field['value'] or 'test'
                 
                 # Submit form
-                timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
+                if isinstance(self.timeout, aiohttp.ClientTimeout):
+                    base = self.timeout.total or 0
+                else:
+                    base = self.timeout
+                timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+                async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
                     if form['method'] == 'post':
-                        async with session.post(form['action'], data=form_data, timeout=self.timeout) as response:
+                        async with session.post(form['action'], data=form_data) as response:
                             response_text = await response.text()
                     else:
-                        async with session.get(form['action'], params=form_data, timeout=self.timeout) as response:
+                        async with session.get(form['action'], params=form_data) as response:
                             response_text = await response.text()
                     
                     # Check for RFI indicators
@@ -387,9 +403,13 @@ class FileInclusionScanner(BaseScanner):
         """
         try:
             # Re-test the specific payload
-            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
-                async with session.get(url, timeout=self.timeout) as response:
+            if isinstance(self.timeout, aiohttp.ClientTimeout):
+                base = self.timeout.total or 0
+            else:
+                base = self.timeout
+            timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
+                async with session.get(url) as response:
                     response_text = await response.text()
                     
                     # Check if we still get the same indicators

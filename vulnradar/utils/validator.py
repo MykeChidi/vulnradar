@@ -69,7 +69,7 @@ class Validator:
         return url
     
     @staticmethod
-    def _is_blocked_host(hostname: str) -> bool:
+    def _is_blocked_host(hostname: Optional[str]) -> bool:
         """Check if hostname resolves to blocked IP or is a blocked domain."""
         if not hostname:
             return True

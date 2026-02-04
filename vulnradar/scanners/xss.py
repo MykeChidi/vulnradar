@@ -17,7 +17,7 @@ error_handler = get_global_error_handler()
 class XSSScanner(BaseScanner):
     """Scanner for Cross-Site Scripting (XSS) vulnerabilities."""
     
-    def __init__(self, headers: Dict = None, timeout: int = 10):
+    def __init__(self, headers: Optional[Dict] = None, timeout: int = 10):
         """Initialize the XSS scanner."""
         super().__init__(headers, timeout)
         
@@ -94,9 +94,13 @@ class XSSScanner(BaseScanner):
                 
                 # Make the request
                 try:
-                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                    if isinstance(self.timeout, aiohttp.ClientTimeout):
+                        base = self.timeout.total or 0
+                    else:
+                        base = self.timeout
+                    timeout = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
                     async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
-                        async with session.get(test_url, timeout=self.timeout) as response:
+                        async with session.get(test_url) as response:
                             response_text = await response.text()
                             
                             # Check if the payload is reflected in the response
@@ -156,10 +160,14 @@ class XSSScanner(BaseScanner):
                         
                 # Make the request
                 try:
-                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                    if isinstance(self.timeout, aiohttp.ClientTimeout):
+                        base = self.timeout.total or 0
+                    else:
+                        base = self.timeout
+                    timeout = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
                     async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                         if form.get("method") == "post":
-                            async with session.post(action_url, data=form_data, timeout=self.timeout) as response:
+                            async with session.post(action_url, data=form_data) as response:
                                 response_text = await response.text()
                                 
                                 # Check if the payload is reflected in the response
@@ -180,7 +188,7 @@ class XSSScanner(BaseScanner):
                                     break
                         else:
                             # Handle GET forms
-                            async with session.get(action_url, params=form_data, timeout=self.timeout) as response:
+                            async with session.get(action_url, params=form_data) as response:
                                 response_text = await response.text()
                                 
                                 # Check if the payload is reflected in the response
@@ -411,9 +419,13 @@ class XSSScanner(BaseScanner):
             test_url = url + payload
             
             try:
-                timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                if isinstance(self.timeout, aiohttp.ClientTimeout):
+                    base = self.timeout.total
+                else:
+                    base = self.timeout
+                timeout = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
                 async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
-                    async with session.get(test_url, timeout=self.timeout) as response:
+                    async with session.get(test_url) as response:
                         response_text = await response.text()
                         
                         # Check for DOM XSS indicators
@@ -552,9 +564,13 @@ class XSSScanner(BaseScanner):
                 test_parts[4] = new_query
                 test_url = urlunparse(test_parts)
                 
-                timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                if isinstance(self.timeout, aiohttp.ClientTimeout):
+                    base = self.timeout.total
+                else:
+                    base = self.timeout
+                timeout = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
                 async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
-                    async with session.get(test_url, timeout=self.timeout) as response:
+                    async with session.get(test_url) as response:
                         response_text = await response.text()
                         
                         if self._check_for_xss_reflection(response_text, payload):
@@ -571,10 +587,17 @@ class XSSScanner(BaseScanner):
                         else:
                             form_data[input_field.get("name")] = input_field.get("value", "")
                             
-                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+                    if isinstance(self.timeout, aiohttp.ClientTimeout):
+                        base = self.timeout.total
+                    else:
+                        base = self.timeout
+                    timeout = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
                     async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                         if form.get("method") == "post":
-                            async with session.post(form.get("action"), data=form_data, timeout=self.timeout) as response:
+                            action = form.get("action") or url
+                            if not isinstance(action, str):
+                                action = str(action)
+                            async with session.post(action, data=form_data) as response:
                                 response_text = await response.text()
                                 if self._check_for_xss_reflection(response_text, payload):
                                     return True

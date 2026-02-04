@@ -4,7 +4,7 @@ import ssl
 import socket
 import dns.resolver
 import aiohttp
-from typing import Dict, List
+from typing import Dict, List, Optional, Any, Union, cast
 import nmap
 import OpenSSL
 from pathlib import Path
@@ -39,6 +39,7 @@ class NetworkInfrastructureAnalyzer:
         self.dns_resolver.lifetime = 10
         self.rate_limiter = RateLimiter()
         
+        self._cache: Optional[ScanCache] = None
         # Initialize cache if no disabled
         if not options.get("no_cache", False):
             cache_dir = Path(options.get("cache_dir", "cache")) / "network"
@@ -78,7 +79,7 @@ class NetworkInfrastructureAnalyzer:
         Perform comprehensive DNS analysis including various record types
         and DNSSEC validation.
         """
-        dns_results = {}
+        dns_results: Dict[str, Union[List[str], Dict[str, Any]]] = {}
         record_types = ['A', 'AAAA', 'MX', 'NS', 'TXT', 'CAA', 'SOA']
         
         try:
@@ -274,7 +275,7 @@ class NetworkInfrastructureAnalyzer:
         system = platform.system()
         
         if system in ['Linux', 'Darwin']:  # Unix-like
-            return os.geteuid() == 0
+            return hasattr(os, 'geteuid') and os.geteuid() == 0
         elif system == 'Windows':
             try:
                 import ctypes
@@ -300,7 +301,7 @@ class NetworkInfrastructureAnalyzer:
         """
         Detect presence and type of load balancers through various techniques.
         """
-        results = {
+        results: Dict[str, Any] = {
             "detected": False,
             "type": None,
             "evidence": []
@@ -360,26 +361,56 @@ class NetworkInfrastructureAnalyzer:
                         
                         if cert_hash not in seen_certs:
                             seen_certs.add(cert_hash)
-                            x509 = OpenSSL.crypto.load_certificate(
-                                OpenSSL.crypto.FILETYPE_ASN1,
-                                cert
-                            )
-                            cert_details.append({
-                                "subject": dict(x[0] for x in ssock.getpeercert()["subject"]),
-                                "issuer": dict(x[0] for x in ssock.getpeercert()["issuer"]),
-                                "serial": x509.get_serial_number(),
-                                "fingerprint": x509.digest("sha256").hex()
-                            })
+                            if cert is not None:
+                                x509 = OpenSSL.crypto.load_certificate(
+                                    OpenSSL.crypto.FILETYPE_ASN1,
+                                    cert
+                                )
+                            else:
+                                continue
+                            peer_cert = ssock.getpeercert()
+                            if peer_cert and "subject" in peer_cert and "issuer" in peer_cert:
+                                pc = cast(Dict[str, Any], peer_cert)
+                                # Build subject dict safely
+                                subject_dict: Dict[str, str] = {}
+                                for item in pc.get("subject", ()):  # typically a sequence of tuples
+                                    if isinstance(item, (list, tuple)) and len(item) > 0:
+                                        first = item[0]
+                                        if isinstance(first, (list, tuple)) and len(first) >= 2:
+                                            key, value = first[0], first[1]
+                                            subject_dict[key] = value
+                                # Build issuer dict safely
+                                issuer_dict: Dict[str, str] = {}
+                                for item in pc.get("issuer", ()):
+                                    if isinstance(item, (list, tuple)) and len(item) > 0:
+                                        first = item[0]
+                                        if isinstance(first, (list, tuple)) and len(first) >= 2:
+                                            key, value = first[0], first[1]
+                                            issuer_dict[key] = value
+                                cert_details.append({
+                                    "subject": subject_dict,
+                                    "issuer": issuer_dict,
+                                    "serial": x509.get_serial_number(),
+                                    "fingerprint": x509.digest("sha256").hex()
+                                })
 
             # Analyze variations
             cert_info["multiple_certificates"] = len(seen_certs) > 1
             cert_info["certificates"] = cert_details
+            issuers_set = set()
+            subjects_set = set()
+            for cert_item in cert_details:
+                issuer = cert_item.get("issuer")
+                if isinstance(issuer, dict):
+                    issuers_set.add(issuer.get("organizationName", ""))
+                subject = cert_item.get("subject")
+                if isinstance(subject, dict):
+                    subjects_set.add(subject.get("commonName", ""))
+
             cert_info["variations"] = {
                 "unique_certs": len(seen_certs),
-                "issuers": len(set(cert["issuer"].get("organizationName", "") 
-                                 for cert in cert_details)),
-                "subjects": len(set(cert["subject"].get("commonName", "") 
-                                  for cert in cert_details))
+                "issuers": len(issuers_set),
+                "subjects": len(subjects_set)
             }
 
             return cert_info

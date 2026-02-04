@@ -36,7 +36,7 @@ class TechDetector:
         """
         self.timeout = aiohttp.ClientTimeout(total=timeout)
         self.max_content_size = max_content_size
-        self._compiled_patterns = {}
+        self._compiled_patterns: dict[str, list[re.Pattern]] = {}
         
         # Technology signatures with compiled regex patterns
         self.signatures = {
@@ -199,7 +199,7 @@ class TechDetector:
         headers = headers or {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-        detected_techs = {}
+        detected_techs: dict[str, int] = {}
         errors = []
         response_time = 0.0
         

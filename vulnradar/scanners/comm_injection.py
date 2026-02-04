@@ -19,7 +19,7 @@ error_handler = get_global_error_handler()
 class CommandInjectionScanner(BaseScanner):
     """Scanner for command injection vulnerabilities."""
     
-    def __init__(self, headers: Dict = None, timeout: int = 10):
+    def __init__(self, headers: Optional[Dict] = None, timeout: int = 10):
         """Initialize the command injection scanner."""
         super().__init__(headers, timeout)
         
@@ -75,7 +75,7 @@ class CommandInjectionScanner(BaseScanner):
 
     async def _test_get_parameters(self, url: str) -> List[Dict]:
         """Test GET parameters for command injection."""
-        vulnerabilities = []
+        vulnerabilities: list = []
         
         # Extract existing parameters
         params = await self._extract_parameters(url)
@@ -103,9 +103,13 @@ class CommandInjectionScanner(BaseScanner):
                     # Time the request for time-based detection
                     start_time = time.time()
 
-                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
-                        async with session.get(test_url, timeout=self.timeout) as response:
+                    if isinstance(self.timeout, aiohttp.ClientTimeout):
+                        timeout_obj = self.timeout
+                    else:
+                        base = self.timeout
+                        timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
+                        async with session.get(test_url) as response:
                             response_time = time.time() - start_time
                             response_text = await response.text()
                             
@@ -134,7 +138,7 @@ class CommandInjectionScanner(BaseScanner):
 
     async def _test_forms(self, url: str) -> List[Dict]:
         """Test POST forms for command injection."""
-        vulnerabilities = []
+        vulnerabilities: list = []
         
         # Get forms from the page
         forms = await self._get_form_inputs(url)
@@ -177,15 +181,19 @@ class CommandInjectionScanner(BaseScanner):
                         # Time the request
                         start_time = time.time()
 
-                        timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-                        async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
+                        if isinstance(self.timeout, aiohttp.ClientTimeout):
+                            timeout_obj = self.timeout
+                        else:
+                            base = self.timeout
+                            timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+                        async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
                             if method == 'post':
-                                async with session.post(action_url, data=form_data, timeout=self.timeout) as response:
+                                async with session.post(action_url, data=form_data) as response:
                                     response_time = time.time() - start_time
                                     response_text = await response.text()
                             else:
                                 # Handle GET forms
-                                async with session.get(action_url, params=form_data, timeout=self.timeout) as response:
+                                async with session.get(action_url, params=form_data) as response:
                                     response_time = time.time() - start_time
                                     response_text = await response.text()
                             
@@ -235,12 +243,16 @@ class CommandInjectionScanner(BaseScanner):
                     # Time the request
                     start_time = time.time()
 
-                    timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
+                    if isinstance(self.timeout, aiohttp.ClientTimeout):
+                        base = self.timeout.total or 0
+                    else:
+                        base = self.timeout
+                    timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+                    async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
                         headers = self.headers.copy()
                         headers['Content-Type'] = 'application/json'
                         
-                        async with session.post(url, json=json_payload, headers=headers, timeout=self.timeout) as response:
+                        async with session.post(url, json=json_payload, headers=headers) as response:
                             response_time = time.time() - start_time
                             response_text = await response.text()
                             
@@ -279,8 +291,8 @@ class CommandInjectionScanner(BaseScanner):
             str: Evidence found, or None if no evidence
         """
         # Check against compiled patterns
-        for pattern in self.compiled_patterns:
-            match = pattern.search(response_text)
+        for compiled_pattern in self.compiled_patterns:
+            match = compiled_pattern.search(response_text)
             if match:
                 return f"Command execution evidence found: {match.group(0)[:100]}"
         
@@ -291,9 +303,9 @@ class CommandInjectionScanner(BaseScanner):
                 r'\b(root|administrator|system|daemon|www-data|apache|nginx|mysql|postgres)\b',
                 r'\b[a-z][a-z0-9_-]{2,15}\b'  # Common username pattern
             ]
-            for pattern in username_patterns:
-                if re.search(pattern, response_text, re.IGNORECASE):
-                    return f"Potential username found in response: {pattern}"
+            for username_pattern in username_patterns:
+                if re.search(username_pattern, response_text, re.IGNORECASE):
+                    return f"Potential username found in response: {username_pattern}"
         
         if 'ls' in payload.lower() or 'dir' in payload.lower():
             # Look for directory listing patterns
@@ -302,9 +314,9 @@ class CommandInjectionScanner(BaseScanner):
                 r'\b\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}',  # Date/time format
                 r'\b\d+\s+bytes?\b'  # File size
             ]
-            for pattern in dir_patterns:
-                if re.search(pattern, response_text, re.IGNORECASE):
-                    return f"Directory listing evidence: {pattern}"
+            for dir_pattern in dir_patterns:
+                if re.search(dir_pattern, response_text, re.IGNORECASE):
+                    return f"Directory listing evidence: {dir_pattern}"
         
         if 'cat' in payload.lower() or 'type' in payload.lower():
             # Look for file content patterns
@@ -313,9 +325,9 @@ class CommandInjectionScanner(BaseScanner):
                 r'\[boot loader\]',  # Windows boot.ini
                 r'for 16-bit app support'  # Windows system.ini
             ]
-            for pattern in file_patterns:
-                if re.search(pattern, response_text, re.IGNORECASE):
-                    return f"File content evidence: {pattern}"
+            for file_pattern in file_patterns:
+                if re.search(file_pattern, response_text, re.IGNORECASE):
+                    return f"File content evidence: {file_pattern}"
         
         return None
 
@@ -361,7 +373,11 @@ class CommandInjectionScanner(BaseScanner):
         """
         try:
             # Re-test with the same payload
-            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+            if isinstance(self.timeout, aiohttp.ClientTimeout):
+                base = self.timeout.total
+            else:
+                base = self.timeout
+            timeout = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
             async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                 # Try different methods based on original finding
                 methods_to_try = ['GET', 'POST']
@@ -371,11 +387,11 @@ class CommandInjectionScanner(BaseScanner):
                         if method == 'GET':
                             # Test as GET parameter
                             test_url = f"{url}{'&' if '?' in url else '?'}test={payload}"
-                            async with session.get(test_url, timeout=self.timeout) as response:
+                            async with session.get(test_url) as response:
                                 response_text = await response.text()
                         else:
                             # Test as POST data
-                            async with session.post(url, data={'test': payload}, timeout=self.timeout) as response:
+                            async with session.post(url, data={'test': payload}) as response:
                                 response_text = await response.text()
                         
                         # Check if we can reproduce the evidence
@@ -389,7 +405,7 @@ class CommandInjectionScanner(BaseScanner):
             validation_payload = "; echo 'VALIDATION_TEST_12345'"
             
             async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
-                async with session.get(f"{url}{'&' if '?' in url else '?'}test={validation_payload}", timeout=self.timeout) as response:
+                async with session.get(f"{url}{'&' if '?' in url else '?'}test={validation_payload}") as response:
                     response_text = await response.text()
                     
                     # Look for our validation string

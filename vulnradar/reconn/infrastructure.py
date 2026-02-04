@@ -4,7 +4,7 @@ import ssl
 import socket
 import dns.resolver
 import aiohttp
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Any, Callable, cast
 from urllib.parse import urlparse
 import re
 import json
@@ -30,6 +30,8 @@ class InfrastructureRelationshipMapper:
         self.options = options
         self.logger = setup_logger("infra_mapper", file_specific=True)
         self.rate_limiter = RateLimiter()
+
+        self._cache: Optional[ScanCache] = None
         # Initialize cache
         if not options.get("no_cache", False):
             cache_dir = Path(options.get("cache_dir", "cache")) / "infrastructure"
@@ -71,7 +73,7 @@ class InfrastructureRelationshipMapper:
         """
         Comprehensive subdomain enumeration using multiple techniques.
         """
-        subdomain_results = {
+        subdomain_results: Dict[str, Any] = {
             "found": [],
             "sources": {},
             "total_count": 0,
@@ -122,16 +124,16 @@ class InfrastructureRelationshipMapper:
         """
         subdomains = set()
         
-        ct_sources = [
+        ct_sources: List[Dict[str, Any]] = [
             {
                 "name": "crt.sh",
                 "url": f"https://crt.sh/?q=%.{self.target.hostname}&output=json",
-                "parser": self._parse_crtsh
+                "parser": cast(Callable[[Any], List[str]], self._parse_crtsh)
             },
             {
                 "name": "certspotter",
                 "url": f"https://api.certspotter.com/v1/issuances?domain={self.target.hostname}&include_subdomains=true&expand=dns_names",
-                "parser": self._parse_certspotter
+                "parser": cast(Callable[[Any], List[str]], self._parse_certspotter)
             }
         ]
         
@@ -145,11 +147,18 @@ class InfrastructureRelationshipMapper:
                         'User-Agent': 'Mozilla/5.0 (compatible; SecurityScanner/1.0)'
                     }
                     
-                    async with session.get(source["url"], headers=headers) as response:
+                    url = source.get("url")
+                    if not isinstance(url, str):
+                        self.logger.warning(f"Invalid CT source URL for {source.get('name')}")
+                        continue
+                    parser = source.get("parser")
+                    async with session.get(url, headers=headers) as response:
                         if response.status == 200:
                             try:
                                 data = await response.json()
-                                domains = source["parser"](data)
+                                domains: List[str] = []
+                                if callable(parser):
+                                    domains = parser(data)  # type: ignore[arg-type]
                                 subdomains.update(domains)
                                 self.logger.info(f"Found {len(domains)} subdomains from {source['name']}")
                                 await self.rate_limiter.report_success()
@@ -255,7 +264,7 @@ class InfrastructureRelationshipMapper:
         tasks = [resolve_with_limit(sub) for sub in common_subdomains]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        subdomains = {r for r in results if r and not isinstance(r, Exception)}
+        subdomains = {str(r) for r in results if r and not isinstance(r, Exception)}
         return list(subdomains)
         
     async def _resolve_dns(self, hostname: str) -> List[str]:
@@ -270,7 +279,7 @@ class InfrastructureRelationshipMapper:
         """
         Discover subdomains through search engine results.
         """
-        subdomains = set()
+        subdomains: Set[str] = set()
         
         try:
             async with aiohttp.ClientSession() as session:
@@ -355,7 +364,7 @@ class InfrastructureRelationshipMapper:
     async def _check_subdomain(self, session: aiohttp.ClientSession, url: str) -> bool:
         """Helper method to check if a subdomain is live."""
         try:
-            async with session.get(url, timeout=5) as response:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
                 return response.status < 500  # Consider any non-server-error as live
         except Exception:
             return False
@@ -364,7 +373,7 @@ class InfrastructureRelationshipMapper:
         """
         Map cloud infrastructure and services used by the target.
         """
-        cloud_results = {
+        cloud_results: Dict[str, Any] = {
             "providers": [],
             "services": [],
             "regions": [],
@@ -650,7 +659,7 @@ class InfrastructureRelationshipMapper:
         distribution = []
         
         # Get all IP addresses
-        ips = set()
+        ips: Set[str] = set()
         try:
             a_records = dns.resolver.resolve(self.target.hostname, 'A')
             ips.update(str(r) for r in a_records)
@@ -843,7 +852,7 @@ class InfrastructureRelationshipMapper:
         """
         Identify and map third-party service integrations.
         """
-        services = {
+        services: Dict[str, Any] = {
             "analytics": [],
             "marketing": [],
             "security": [],
@@ -1026,7 +1035,7 @@ class InfrastructureRelationshipMapper:
         """
         Map relationships between different assets and infrastructure components.
         """
-        relationships = {
+        relationships: Dict[str, Any] = {
             "dependencies": [],
             "connections": [],
             "shared_infrastructure": [],
@@ -1060,15 +1069,11 @@ class InfrastructureRelationshipMapper:
         """
         Get information about IP blocks associated with the target.
         """
-        ip_info = {
-            "blocks": [],
-            "total_ips": 0,
-            "network_ranges": []
-        }
+        ip_info = {"blocks": [], "total_ips": 0, "network_ranges": []}  # type: Dict[str, Any]
         
         try:
             # Get all IP addresses associated with the domain
-            ips = set()
+            ips : Set[str]= set()
             try:
                 a_records = dns.resolver.resolve(self.target.hostname, 'A')
                 ips.update(str(r) for r in a_records)
@@ -1104,7 +1109,7 @@ class InfrastructureRelationshipMapper:
         """
         Get ASN (Autonomous System Number) information for the target.
         """
-        asn_info = {
+        asn_info: Dict[str, Any] = {
             "asn": None,
             "organization": None,
             "network_ranges": [],
@@ -1113,7 +1118,7 @@ class InfrastructureRelationshipMapper:
         
         try:
             # Get IP addresses
-            ips = set()
+            ips: Set[str] = set()
             try:
                 a_records = dns.resolver.resolve(self.target.hostname, 'A')
                 ips.update(str(r) for r in a_records)
@@ -1203,7 +1208,7 @@ class InfrastructureRelationshipMapper:
         
         try:
             # Get IP addresses for the target
-            target_ips = set()
+            target_ips: Set[str] = set()
             try:
                 a_records = dns.resolver.resolve(self.target.hostname, 'A')
                 target_ips.update(str(r) for r in a_records)
@@ -1278,10 +1283,17 @@ class InfrastructureRelationshipMapper:
                     cert = ssock.getpeercert()
                     
                     # Get all subject alternative names
-                    if "subjectAltName" in cert:
-                        for type_name, name in cert["subjectAltName"]:
-                            if type_name == "DNS" and name != self.target.hostname:
-                                shared_domains.append(name)
+                    if cert and "subjectAltName" in cert and cert["subjectAltName"]:
+                        san = cert.get("subjectAltName")
+                        if isinstance(san, (list, tuple)):
+                            for item in san:
+                                if (
+                                    isinstance(item, (list, tuple)) and len(item) == 2
+                                    and isinstance(item[0], str) and isinstance(item[1], str)
+                                ):
+                                    type_name, name = item[0], item[1]
+                                    if type_name == "DNS" and name != self.target.hostname:
+                                        shared_domains.append(name)
                                 
         except Exception as e:
             self.logger.error(f"Certificate check failed: {str(e)}")

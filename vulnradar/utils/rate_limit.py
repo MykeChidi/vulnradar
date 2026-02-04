@@ -25,7 +25,7 @@ class RateLimiter:
         self.current_rate = initial_rate
         self.min_rate = min_rate
         self.max_rate = max_rate
-        self.tokens = 10
+        self.tokens: float = 10.0
         self.last_update = time.time()
         self.consecutive_successes = 0
         self.consecutive_failures = 0

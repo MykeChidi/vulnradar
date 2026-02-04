@@ -1,7 +1,7 @@
 # vulnradar/reconn/webapp.py - Web Application Analysis Module
 import asyncio
 import aiohttp
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Mapping
 import re
 from pathlib import Path
 from bs4 import BeautifulSoup
@@ -27,6 +27,7 @@ class WebApplicationAnalyzer:
         self.rate_limiter = RateLimiter()
         
         # Initialize cache
+        self._cache: Optional[ScanCache]
         if not options.get("no_cache", False):
             cache_dir = Path(options.get("cache_dir", "cache")) / "webapp"
             self._cache = ScanCache(cache_dir, default_ttl=options.get("cache_ttl", 3600))
@@ -64,7 +65,7 @@ class WebApplicationAnalyzer:
         """
         Detect technologies used in the web application.
         """
-        tech_results = {
+        tech_results: Dict[str, Any] = {
             "frameworks": [],
             "languages": [],
             "databases": [],
@@ -116,11 +117,11 @@ class WebApplicationAnalyzer:
             )
             return {"error": str(e)}
             
-    async def _analyze_headers(self, headers: Dict) -> Dict:
+    async def _analyze_headers(self, headers: Mapping[str, str]) -> Dict[str, Any]:
         """
         Analyze response headers to identify technologies.
         """
-        tech_info = {
+        tech_info: Dict[str, Any] = {
             "servers": [],
             "languages": [],
             "frameworks": []
@@ -172,7 +173,7 @@ class WebApplicationAnalyzer:
         """
         Analyze HTML content to identify technologies.
         """
-        tech_info = {
+        tech_info: Dict[str, Any] = {
             "frameworks": [],
             "javascript_libs": [],
             "cms": None
@@ -274,7 +275,7 @@ class WebApplicationAnalyzer:
         """
         Discover hidden content and resources.
         """
-        content_results = {
+        content_results: Dict[str, Any] = {
             "endpoints": [],
             "directories": [],
             "files": [],
@@ -306,7 +307,7 @@ class WebApplicationAnalyzer:
         """
         Analyze robots.txt file for hidden content.
         """
-        results = {
+        results: Dict[str, Any] = {
             "found": False,
             "entries": [],
             "sitemaps": [],
@@ -357,7 +358,7 @@ class WebApplicationAnalyzer:
         """
         Analyze sitemap files for content discovery.
         """
-        results = {
+        results: Dict[str, Any] = {
             "found": False,
             "urls": [],
             "errors": []
@@ -450,6 +451,9 @@ class WebApplicationAnalyzer:
                 await self.rate_limiter.report_failure()  
                 return None
             
+        # Explicitly return None for code paths that do not find a directory
+        return None
+
     def _is_interesting_response(self, response: aiohttp.ClientResponse) -> bool:
         """Determine if a response is interesting based on various factors."""
         if response.status == 200:
@@ -520,6 +524,9 @@ class WebApplicationAnalyzer:
                 await self.rate_limiter.report_failure() 
                 return None
             
+        # Explicitly return None when API endpoint is not found or request fails
+        return None
+
     async def _check_swagger_docs(self, session: aiohttp.ClientSession) -> List[Dict]:
         """Check for Swagger/OpenAPI documentation."""
         docs = []
@@ -564,7 +571,7 @@ class WebApplicationAnalyzer:
         """
         Analyze JavaScript files for endpoints, secrets, and vulnerabilities.
         """
-        js_results = {
+        js_results: Dict[str, Any] = {
             "files": [],
             "endpoints": [],
             "possible_secrets": [],
@@ -576,17 +583,17 @@ class WebApplicationAnalyzer:
             # Get all JavaScript files
             js_files = await self._get_javascript_files()
             
-            for js_file in js_files:
-                # Analyze each file
-                analysis = await self._analyze_js_file(js_file)
+            for analysis in js_files:
+                if not analysis:
+                    continue
                 js_results["files"].append(analysis)
-                
+
                 # Update collected data
                 js_results["endpoints"].extend(analysis.get("endpoints", []))
                 js_results["possible_secrets"].extend(analysis.get("secrets", []))
                 js_results["vulnerabilities"].extend(analysis.get("vulnerabilities", []))
                 js_results["websocket_endpoints"].extend(analysis.get("websockets", []))
-                
+
             return js_results
             
         except Exception as e:
@@ -642,12 +649,13 @@ class WebApplicationAnalyzer:
             
         return js_files
     
-    async def _analyze_js_file(self, session: aiohttp.ClientSession, url: str) -> Dict:
+    async def _analyze_js_file(self, session: aiohttp.ClientSession, url: str) -> Optional[Dict]:
         """
         Analyze a JavaScript file by streaming chunks.
         Never loads the entire file into memory.
+        Returns None if analysis cannot proceed.
         """
-        analysis = {
+        analysis: Dict[str, Any] = {
             "url": url,
             "size": 0,
             "endpoints": [],

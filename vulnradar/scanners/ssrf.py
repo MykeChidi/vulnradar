@@ -1,7 +1,7 @@
 # vulnradar/scanners/ssrf.py - SSRF Scanner
 
 import asyncio
-from typing import Dict, List
+from typing import Dict, List, Optional
 from urllib.parse import urlparse, quote
 
 import aiohttp
@@ -17,7 +17,7 @@ error_handler = get_global_error_handler()
 class SSRFScanner(BaseScanner):
     """Scanner for Server-Side Request Forgery (SSRF) vulnerabilities."""
     
-    def __init__(self, headers: Dict = None, timeout: int = 10):
+    def __init__(self, headers: Optional[Dict] = None, timeout: int = 10):
         """Initialize SSRF scanner."""
         super().__init__(headers, timeout)
         
@@ -161,7 +161,7 @@ class SSRFScanner(BaseScanner):
             
         return vulnerabilities
     
-    async def _test_ssrf_payload(self, test_url: str, payload: str, param_name: str, injection_type: str) -> Dict:
+    async def _test_ssrf_payload(self, test_url: str, payload: str, param_name: str, injection_type: str) -> Optional[Dict]:
         """
         Test a specific SSRF payload.
         
@@ -175,10 +175,14 @@ class SSRFScanner(BaseScanner):
             Dict: Vulnerability information if found, None otherwise
         """
         try:
-            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
-                # Set a longer timeout for SSRF tests as they might be slow
-                async with session.get(test_url, timeout=self.timeout * 2) as response:
+            # determine base timeout seconds
+            if isinstance(self.timeout, aiohttp.ClientTimeout):
+                base = self.timeout.total or 0
+            else:
+                base = self.timeout
+            timeout_obj = aiohttp.ClientTimeout(total=base , connect=5, sock_read=base)
+            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
+                async with session.get(test_url) as response:
                     response_text = await response.text()
                     
                     # Check for SSRF indicators in response
@@ -257,7 +261,7 @@ class SSRFScanner(BaseScanner):
             
         return None
     
-    async def _test_ssrf_form_payload(self, action_url: str, method: str, form_data: Dict, payload: str, input_name: str) -> Dict:
+    async def _test_ssrf_form_payload(self, action_url: str, method: str, form_data: Dict, payload: str, input_name: str) -> Optional[Dict]:
         """
         Test SSRF payload via form submission.
         
@@ -272,10 +276,14 @@ class SSRFScanner(BaseScanner):
             Dict: Vulnerability information if found, None otherwise
         """
         try:
-            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
-            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
+            if isinstance(self.timeout, aiohttp.ClientTimeout):
+                base = self.timeout.total or 0
+            else:
+                base = self.timeout
+            timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
+            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout_obj) as session:
                 if method.lower() == 'post':
-                    async with session.post(action_url, data=form_data, timeout=self.timeout * 2) as response:
+                    async with session.post(action_url, data=form_data) as response:
                         response_text = await response.text()
                         
                         # Check for SSRF indicators
@@ -345,9 +353,13 @@ class SSRFScanner(BaseScanner):
         """
         try:
             # Re-test the specific payload
-            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=self.timeout)
+            if isinstance(self.timeout, aiohttp.ClientTimeout):
+                base = self.timeout.total
+            else:
+                base = self.timeout
+            timeout = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
             async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
-                async with session.get(url, timeout=self.timeout * 2) as response:
+                async with session.get(url) as response:
                     response_text = await response.text()
                     
                     # Check if the same indicators are still present

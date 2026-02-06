@@ -1,5 +1,9 @@
 # `VulnRadar` - A Web Vulnerability Scanner
 
+[![Python Version](https://img.shields.io/badge/python-3.10+%2B-blue)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-AGPLv3-green)](LICENSE)
+[![GitHub Issues](https://img.shields.io/github/issues/MykeChidi/vulnradar)](https://github.com/MykeChidi/vulnradar/issues)
+
 A comprehensive, asynchronous web vulnerability scanner designed to identify common security flaws in web applications. VulnRadar combines intelligent web crawling, advanced reconnaissance, and targeted vulnerability testing with detailed reporting capabilities.
 
 ## Quick Start
@@ -168,7 +172,6 @@ Complete documentation for all use cases:
 ## License
 
 This project is licensed under the **GNU Affero General Public License v3.0** - see [LICENSE](LICENSE) file for details.
-- *Copyright (c) 2026 MykeChidi.*
 
 ### Key License Terms
 - ✅ Free to use, modify, and distribute
@@ -196,3 +199,4 @@ This tool is provided "as is" for educational and authorized security testing pu
 ---
 
 **VulnRadar** - Making web application security testing accessible and automated.
+ *Copyright (c) 2026 MykeChidi.*

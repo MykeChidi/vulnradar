@@ -442,7 +442,12 @@ class VulnRadar:
             headers=self.headers
         )
         
-        logger.info(f"Technology detection completed: {', '.join(self.results['technologies'].keys())}")
+        # Handle DetectionResult object
+        tech_data = self.results["technologies"]
+        if hasattr(tech_data, 'technologies'):
+            logger.info(f"Technology detection completed: {', '.join(tech_data.technologies.keys())}")
+        elif isinstance(tech_data, dict):
+            logger.info(f"Technology detection completed: {', '.join(tech_data.keys())}")
     
     async def run_vulnerability_scans(self) -> None:
         """Run all selected vulnerability scans."""

@@ -4,7 +4,7 @@ import asyncio
 import json
 import yaml
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime
 from urllib.parse import urlparse
@@ -22,7 +22,7 @@ class TargetConfig:
     """Configuration for a single target."""
     url: str
     name: Optional[str] = None
-    options: Optional[Dict] = None
+    options: Optional[Dict[str, Any]] = None
     timeout: Optional[int] = 300  # Default 5 minutes
     retries: int = 0
     
@@ -56,7 +56,7 @@ class TargetConfig:
 class MultiTargetScanner:
     """Scanner for multiple targets with individual configurations."""
     
-    def __init__(self, config_file: Path, default_options: Optional[Dict] = None, 
+    def __init__(self, config_file: Path, default_options: Optional[Dict[str, Any]] = None, 
                  concurrent: bool = True, max_concurrent: int = 3,
                  rate_limit: float = 1.0, ):
         """
@@ -76,7 +76,7 @@ class MultiTargetScanner:
         self.max_concurrent = max_concurrent
         self.rate_limit = rate_limit
         self.targets: List[TargetConfig] = []
-        self.results: List[Dict] = []
+        self.results: List[Dict[str, Any]] = []
         self.scan_started: Optional[datetime] = None
         self.scan_ended: Optional[datetime] = None
         
@@ -103,7 +103,7 @@ class MultiTargetScanner:
             logger.error(f"Failed to load targets: {str(e)}")
             raise
     
-    def _parse_targets(self, data: any) -> None:
+    def _parse_targets(self, data: Any) -> None:
         """Parse targets from loaded data (JSON/YAML)."""
         if isinstance(data, list):
             # Array of targets
@@ -122,29 +122,36 @@ class MultiTargetScanner:
                     if isinstance(config, str):
                         self._add_target(url=config, name=name)
                     elif isinstance(config, dict):
-                        self._add_target(
-                            url=config.get('url', name),
-                            name=name,
-                            options=config.get('options'),
-                            timeout=config.get('timeout'),
-                            retries=config.get('retries', 0)
-                        )
+                        url: Optional[str] = config.get('url', name)
+                        if isinstance(url, str):
+                            self._add_target(
+                                url=url,
+                                name=name,
+                                options=config.get('options'),
+                                timeout=config.get('timeout'),
+                                retries=config.get('retries', 0)
+                            )
     
-    def _add_target_from_item(self, item: any) -> None:
+    def _add_target_from_item(self, item: Any) -> None:
         """Add single target from parsed item."""
         if isinstance(item, str):
             self._add_target(url=item)
         elif isinstance(item, dict):
-            self._add_target(
-                url=item.get('url'),
-                name=item.get('name'),
-                options=item.get('options'),
-                timeout=item.get('timeout'),
-                retries=item.get('retries', 0)
-            )
+            url: Optional[str] = item.get('url')
+            # ensure url is a string
+            if not isinstance(url, str):
+                url = str(url) if url else None
+            if url:
+                self._add_target(
+                    url=url,
+                    name=item.get('name'),
+                    options=item.get('options'),
+                    timeout=item.get('timeout'),
+                    retries=item.get('retries', 0)
+                )
     
     def _add_target(self, url: str, name: Optional[str] = None,
-                    options: Optional[Dict] = None, timeout: Optional[int] = None,
+                    options: Optional[Dict[str, Any]] = None, timeout: Optional[int] = None,
                     retries: int = 0) -> None:
         """Add a single target with validation."""
         if not url:
@@ -163,7 +170,7 @@ class MultiTargetScanner:
         except ValueError as e:
             logger.warning(f"Skipping invalid target: {e}")
     
-    def _load_yaml(self) -> any:
+    def _load_yaml(self) -> Any:
         """Load and parse YAML file."""
         try:
             with open(self.config_file, 'r', encoding='utf-8') as f:
@@ -172,13 +179,15 @@ class MultiTargetScanner:
         except yaml.YAMLError as e:
             raise ValueError(f"Invalid YAML in {self.config_file}: {str(e)}")
     
-    def _merge_options(self, target_options: Dict) -> Dict:
+    def _merge_options(self, target_options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """Merge target-specific options with defaults."""
+        if target_options is None:
+            target_options = {}
         merged = self.default_options.copy()
         merged.update(target_options)
         return merged
     
-    async def scan_target(self, target: TargetConfig, attempt: int = 1) -> Dict:
+    async def scan_target(self, target: TargetConfig, attempt: int = 1) -> Dict[str, Any]:
         """
         Scan a single target with retry logic.
         
@@ -277,7 +286,7 @@ class MultiTargetScanner:
                 self.results.append(result)
                 pbar.update(1)
     
-    async def scan_all(self) -> List[Dict]:
+    async def scan_all(self) -> List[Dict[str, Any]]:
         """
         Scan all targets.
         
@@ -303,7 +312,7 @@ class MultiTargetScanner:
     
     def generate_summary(self) -> Dict:
         """Generate summary of all scan results."""
-        summary = {
+        summary: Dict[str, Any] = {
             'total_targets': len(self.targets),
             'successful_scans': 0,
             'failed_scans': 0,
@@ -322,29 +331,30 @@ class MultiTargetScanner:
             }
             
             if result.get('scan_completed'):
-                summary['successful_scans'] += 1
+                summary['successful_scans'] = summary['successful_scans'] + 1
                 
                 # Count vulnerabilities
-                vulns = result.get('vulnerabilities', [])
+                vulns: List[Dict[str, Any]]= result.get('vulnerabilities', [])
                 target_summary['vulnerabilities'] = len(vulns)
-                summary['total_vulnerabilities'] += len(vulns)
+                summary['total_vulnerabilities'] = summary['total_vulnerabilities'] + len(vulns)
                 
                 # Count endpoints
-                endpoints = result.get('endpoints', [])
+                endpoints: List[Dict[str, Any]]= result.get('endpoints', [])
                 target_summary['endpoints'] = len(endpoints)
-                summary['total_endpoints'] += len(endpoints)
+                summary['total_endpoints'] = summary['total_endpoints'] + len(endpoints)
                 
                 # Categorize vulnerabilities
                 for vuln in vulns:
                     severity = vuln.get('severity', 'Unknown')
                     if severity in summary['vulnerabilities_by_severity']:
-                        summary['vulnerabilities_by_severity'][severity] += 1
+                        curr_count = summary['vulnerabilities_by_severity'][severity]
+                        summary['vulnerabilities_by_severity'][severity] = curr_count + 1
                     
                     vuln_type = vuln.get('type', 'Unknown')
-                    summary['vulnerabilities_by_type'][vuln_type] = \
-                        summary['vulnerabilities_by_type'].get(vuln_type, 0) + 1
+                    curr_type_count = summary['vulnerabilities_by_type'].get(vuln_type, 0)
+                    summary['vulnerabilities_by_type'][vuln_type] = curr_type_count + 1
             else:
-                summary['failed_scans'] += 1
+                summary['failed_scans'] = summary['failed_scans'] + 1
                 target_summary['error'] = result.get('error', 'Unknown error')
             
             summary['targets'].append(target_summary)

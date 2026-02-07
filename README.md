@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="./assets/vulnradar.png" alt="Logo" width="200"/>
+</div>
+
 # `VulnRadar` - A Web Vulnerability Scanner
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
@@ -73,6 +77,10 @@ python -m vulnradar --gui
 ### 🖥️ User Interfaces
 - **Command-Line Interface (CLI)** - Full automation support
 - **Graphical User Interface (GUI)** - Tkinter-based GUI
+
+<div align="center">
+  <img src="./assets/demo_gui.png" alt="GUI Demo" width="500"/>
+</div>
 
 ## Installation
 

@@ -238,20 +238,26 @@ class VulnRadarGUI:
         scrollable_frame = tk.Frame(canvas, bg=self.colors['bg'])
 
         scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="center")
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Make scrollable frame fill canvas width
+        def on_canvas_resize(event):
+            canvas.itemconfig(canvas_window, width=event.width - 20)
+        canvas.bind('<Configure>', on_canvas_resize)
+        
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         self.bind_mousewheel(canvas)
 
-        # Configure grid
+        # Configure grid for better layout
         scrollable_frame.columnconfigure(0, weight=1)
         scrollable_frame.columnconfigure(1, weight=1)
         scrollable_frame.columnconfigure(2, weight=1) 
-        scrollable_frame.rowconfigure(2, weight=1)
+        scrollable_frame.rowconfigure(3, weight=0)
         
-        # Target Card
-        target_card = self.create_card(scrollable_frame, "🎯 Target Configuration", 0, 0, columnspan=2)
+        # Target Card - Full width
+        target_card = self.create_card(scrollable_frame, "🎯 Target Configuration", 0, 0, columnspan=3)
         
         target_frame = tk.Frame(target_card, bg=self.colors['secondary_bg'])
         target_frame.pack(fill=tk.X, padx=15, pady=10)
@@ -266,7 +272,7 @@ class VulnRadarGUI:
         self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=8)
         self.url_entry.insert(0, "https://target-site.com")
         
-        # Scan Options Card
+        # Scan Options Card - Column 0
         options_card = self.create_card(scrollable_frame, "🔧 Scan Options", 1, 0)
         
         options_inner = tk.Frame(options_card, bg=self.colors['secondary_bg'])
@@ -293,7 +299,7 @@ class VulnRadarGUI:
                               font=('Segoe UI', 9))
             cb.grid(row=i//2, column=i%2, sticky=tk.W, padx=5, pady=5)
             
-        # Advanced Options Card
+        # Advanced Options Card - Column 1
         advanced_card = self.create_card(scrollable_frame, "⚡ Advanced Options", 1, 1)
         
         adv_inner = tk.Frame(advanced_card, bg=self.colors['secondary_bg'])
@@ -316,7 +322,7 @@ class VulnRadarGUI:
             entry = tk.Entry(adv_inner, textvariable=var, width=8,
                            bg=self.colors['bg'], fg=self.colors['text'],
                            insertbackground=self.colors['text'], relief='flat')
-            entry.grid(row=i, column=1, sticky=tk.W, padx=10, pady=5)
+            entry.grid(row=i, column=1, sticky=tk.EW, padx=10, pady=5)
             
         self.selenium_var = tk.BooleanVar(value=False)
         tk.Checkbutton(adv_inner, text="Use Selenium", variable=self.selenium_var,
@@ -328,46 +334,10 @@ class VulnRadarGUI:
                       bg=self.colors['secondary_bg'], fg=self.colors['text'],
                       selectcolor=self.colors['bg']).grid(row=5, column=0, columnspan=2, sticky=tk.W, pady=5)
         
-        # Reconnaissance Mode Card
-        recon_mode_card = self.create_card(scrollable_frame, "🔍 Reconnaissance Mode", 1, 2)
-
-        recon_mode_inner = tk.Frame(recon_mode_card, bg=self.colors['secondary_bg'])
-        recon_mode_inner.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
-
-        self.advanced_recon_only_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(recon_mode_inner, text="Advanced Recon Only (Skip Vulnerability Scanning)", 
-                    variable=self.advanced_recon_only_var,
-                    bg=self.colors['secondary_bg'], fg=self.colors['text'],
-                    selectcolor=self.colors['bg'], font=('Segoe UI', 9, 'bold')).pack(anchor=tk.W, pady=5)
-
-        tk.Label(recon_mode_inner, text="Select reconnaissance modules to run:",
-                bg=self.colors['secondary_bg'], fg=self.colors['text_secondary'],
-                font=('Segoe UI', 8)).pack(anchor=tk.W, pady=(10, 5))
-
-        self.recon_all_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(recon_mode_inner, text="All Modules", 
-                    variable=self.recon_all_var,
-                    bg=self.colors['secondary_bg'], fg=self.colors['warning'],
-                    selectcolor=self.colors['bg'], font=('Segoe UI', 9)).pack(anchor=tk.W, pady=2)
-
-        self.recon_module_vars = {}
-        modules = [
-            ("Network Infrastructure", "recon_network"),
-            ("Security Infrastructure", "recon_security"),
-            ("Web Application", "recon_webapp"),
-            ("Infrastructure Mapping", "recon_infrastructure"),
-            ("Miscellaneous", "recon_misc")
-        ]
-
-        for label, key in modules:
-            var = tk.BooleanVar(value=False)
-            self.recon_module_vars[key] = var
-            tk.Checkbutton(recon_mode_inner, text=label, variable=var,
-                        bg=self.colors['secondary_bg'], fg=self.colors['text'],
-                        selectcolor=self.colors['bg'], font=('Segoe UI', 8)).pack(anchor=tk.W, pady=2, padx=10)
+        adv_inner.columnconfigure(1, weight=1)
     
-        # Progress Card
-        progress_card = self.create_card(scrollable_frame, "📊 Scan Progress", 2, 0, columnspan=2)
+        # Progress Card - Full width
+        progress_card = self.create_card(scrollable_frame, "📊 Scan Progress", 2, 0, columnspan=3)
         
         progress_inner = tk.Frame(progress_card, bg=self.colors['secondary_bg'])
         progress_inner.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
@@ -379,11 +349,11 @@ class VulnRadarGUI:
         progress_label.pack(anchor=tk.W, pady=(0, 10))
         
         self.progress_bar = ttk.Progressbar(progress_inner, mode='indeterminate')
-        self.progress_bar.pack(fill=tk.X, pady=(0, 20))
+        self.progress_bar.pack(fill=tk.X, pady=(0, 15))
         
-        # Stats frame
+        # Stats frame with horizontal layout
         stats_frame = tk.Frame(progress_inner, bg=self.colors['secondary_bg'])
-        stats_frame.pack(fill=tk.X)
+        stats_frame.pack(fill=tk.X, pady=(0, 15))
         
         self.stat_labels = {}
         stats = [("Endpoints", "endpoints"), ("Vulnerabilities", "vulns")]
@@ -394,49 +364,52 @@ class VulnRadarGUI:
             frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
             
             tk.Label(frame, text=label, bg=self.colors['bg'],
-                    fg=self.colors['text_secondary'], font=('Segoe UI', 9)).pack(pady=(10, 5))
+                    fg=self.colors['text_secondary'], font=('Segoe UI', 9)).pack(pady=(8, 3))
             
             value_label = tk.Label(frame, text="0", bg=self.colors['bg'],
-                                  fg=self.colors['accent'], font=('Segoe UI', 20, 'bold'))
-            value_label.pack(pady=(0, 10))
+                                  fg=self.colors['accent'], font=('Segoe UI', 18, 'bold'))
+            value_label.pack(pady=(0, 8))
             self.stat_labels[key] = value_label
             
-        # Control Buttons
+        # Control Buttons - Centered and prominent
         button_frame = tk.Frame(progress_inner, bg=self.colors['secondary_bg'])
-        button_frame.pack(pady=20)
+        button_frame.pack(pady=15)
         
         self.start_btn = ModernButton(button_frame, "▶ Start Scan", self.start_scan,
                                       bg=self.colors['success'], hover_bg='#2EA043', width=150)
-        self.start_btn.pack(side=tk.LEFT, padx=5)
+        self.start_btn.pack(side=tk.LEFT, padx=8)
         
         self.stop_btn = ModernButton(button_frame, "⏹ Stop Scan", self.stop_scan,
                                      bg=self.colors['danger'], hover_bg='#DA3633', width=150)
-        self.stop_btn.pack(side=tk.LEFT, padx=5)
+        self.stop_btn.pack(side=tk.LEFT, padx=8)
         self.stop_btn.configure_state("disabled")
         
     def setup_recon_tab(self):
-        """Setup reconnaissance tab"""
+        """Setup reconnaissance tab with hierarchical checkbox control"""
         canvas = tk.Canvas(self.recon_tab, bg=self.colors['bg'], highlightthickness=0)
         scrollbar = ttk.Scrollbar(self.recon_tab, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas, bg=self.colors['bg'])
         
         scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="center")
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Make scrollable frame fill canvas width
+        def on_canvas_resize(event):
+            canvas.itemconfig(canvas_window, width=event.width - 20)
+        canvas.bind('<Configure>', on_canvas_resize)
         
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         self.bind_mousewheel(canvas)
 
-        self.recon_tab.columnconfigure(0, weight=1)
-        self.recon_tab.rowconfigure(0, weight=1)
+        # Configure grid for 2-column layout
+        scrollable_frame.columnconfigure(0, weight=1)
+        scrollable_frame.columnconfigure(1, weight=1)
         
-        # Recon modules
-        self.recon_vars = {}
-        
-        modules = [
-            ("Network Infrastructure", [
+        # Define recon modules with their sub-options
+        self.recon_modules = [
+            ("Network Infrastructure", "recon_network", [
                 ("Port Scanning", "port_scan"),
                 ("WAF Detection", "waf"),
                 ("Load Balancer Detection", "load_bal"),
@@ -444,21 +417,21 @@ class VulnRadarGUI:
                 ("OS Detection", "os_detect"),
                 ("Script Scanning", "script_scan")
             ]),
-            ("Web Application", [
+            ("Web Application", "recon_webapp", [
                 ("Content Discovery", "content_disc"),
                 ("JavaScript Analysis", "js_analysis"),
                 ("Directory Enumeration", "dir_enum")
             ]),
-            ("Infrastructure", [
+            ("Infrastructure", "recon_infrastructure", [
                 ("Subdomain Enumeration", "subdomain"),
                 ("Cloud Infrastructure", "cloud"),
                 ("DNS Bruteforce", "dns_brute")
             ]),
-            ("Security", [
+            ("Security", "recon_security", [
                 ("SSL/TLS Analysis", "ssl"),
                 ("Security Headers", "sec_headers")
             ]),
-            ("Miscellaneous", [
+            ("Miscellaneous", "recon_misc", [
                 ("Error Analysis", "error_analysis"),
                 ("Cache Analysis", "cache_analysis"),
                 ("Debug Mode Check", "debug_check"),
@@ -467,20 +440,111 @@ class VulnRadarGUI:
             ])
         ]
         
-        for i, (category, options) in enumerate(modules):
-            card = self.create_card(scrollable_frame, f"🔍 {category}", i, 0)
+        # Data structures for checkbox hierarchy
+        self.recon_module_vars = {}  # Category level checkboxes
+        self.recon_vars = {}  # Sub-option checkboxes
+        self.category_to_options = {}  # Maps category key to list of sub-option keys
+        
+        # Reconnaissance Mode Card - Full width at top
+        recon_mode_card = self.create_card(scrollable_frame, "🔍 Reconnaissance Configuration", 0, 0, columnspan=2)
+        recon_mode_inner = tk.Frame(recon_mode_card, bg=self.colors['secondary_bg'])
+        recon_mode_inner.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+        
+        # Advanced Recon Only option
+        self.advanced_recon_only_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(recon_mode_inner, text="Advanced Recon Only (Skip Vulnerability Scanning)", 
+                    variable=self.advanced_recon_only_var,
+                    bg=self.colors['secondary_bg'], fg=self.colors['text'],
+                    selectcolor=self.colors['bg'], font=('Segoe UI', 10, 'bold')).pack(anchor=tk.W, pady=(0, 15))
+        
+        # "Select All" checkbox
+        select_all_frame = tk.Frame(recon_mode_inner, bg=self.colors['secondary_bg'])
+        select_all_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.recon_all_var = tk.BooleanVar(value=False)
+        select_all_cb = tk.Checkbutton(select_all_frame, text="Enable All Recon Modules", 
+                    variable=self.recon_all_var,
+                    bg=self.colors['secondary_bg'], fg=self.colors['warning'],
+                    selectcolor=self.colors['bg'], font=('Segoe UI', 10, 'bold'),
+                    command=self.on_recon_all_clicked)
+        select_all_cb.pack(anchor=tk.W, padx=5)
+        
+        # Module selection frame
+        module_select_frame = tk.Frame(recon_mode_inner, bg=self.colors['secondary_bg'],
+                                       highlightbackground=self.colors['border'], 
+                                       highlightthickness=1)
+        module_select_frame.pack(fill=tk.X, pady=10, padx=5)
+        
+        select_label = tk.Label(module_select_frame, text="Select Modules:", 
+                               bg=self.colors['secondary_bg'], fg=self.colors['text_secondary'],
+                               font=('Segoe UI', 9, 'bold'))
+        select_label.pack(anchor=tk.W, padx=10, pady=(8, 5))
+        
+        # Create module checkboxes in recon mode card
+        module_grid = tk.Frame(module_select_frame, bg=self.colors['secondary_bg'])
+        module_grid.pack(fill=tk.X, padx=10, pady=(0, 10))
+        
+        for i, (category_name, category_key, _) in enumerate(self.recon_modules):
+            var = tk.BooleanVar(value=False)
+            self.recon_module_vars[category_key] = var
+            self.category_to_options[category_key] = [opt[1] for opt in self.recon_modules[i][2]]
+            
+            def make_module_callback(key):
+                return lambda: self.on_recon_module_clicked(key)
+            
+            cb = tk.Checkbutton(module_grid, text=category_name, variable=var,
+                               bg=self.colors['secondary_bg'], fg=self.colors['text'],
+                               selectcolor=self.colors['bg'], font=('Segoe UI', 9),
+                               command=make_module_callback(category_key))
+            cb.grid(row=i//2, column=i%2, sticky=tk.W, padx=8, pady=5)
+        
+        # Recon Options Cards - Full width details
+        for i, (category_name, category_key, options) in enumerate(self.recon_modules):
+            row = i + 1
+            card = self.create_card(scrollable_frame, f"🔍 {category_name}", row, 0, columnspan=2)
             
             inner = tk.Frame(card, bg=self.colors['secondary_bg'])
             inner.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
             
-            for j, (label, key) in enumerate(options):
+            # Configure grid for options
+            inner.columnconfigure(0, weight=1)
+            inner.columnconfigure(1, weight=1)
+            
+            for j, (label, option_key) in enumerate(options):
                 var = tk.BooleanVar(value=True)
-                self.recon_vars[key] = var
+                self.recon_vars[option_key] = var
                 
                 cb = tk.Checkbutton(inner, text=label, variable=var,
                                   bg=self.colors['secondary_bg'], fg=self.colors['text'],
                                   selectcolor=self.colors['bg'], font=('Segoe UI', 9))
                 cb.grid(row=j//2, column=j%2, sticky=tk.W, padx=5, pady=5)
+    
+    def on_recon_all_clicked(self):
+        """Handle 'Enable All Recon Modules' checkbox click"""
+        is_checked = self.recon_all_var.get()
+        
+        # Update all module category checkboxes
+        for category_key in self.recon_module_vars:
+            self.recon_module_vars[category_key].set(is_checked)
+            # Also update all sub-options
+            if category_key in self.category_to_options:
+                for option_key in self.category_to_options[category_key]:
+                    if option_key in self.recon_vars:
+                        self.recon_vars[option_key].set(is_checked)
+    
+    def on_recon_module_clicked(self, category_key):
+        """Handle individual module category checkbox click"""
+        is_checked = self.recon_module_vars[category_key].get()
+        
+        # Update all sub-options for this category
+        if category_key in self.category_to_options:
+            for option_key in self.category_to_options[category_key]:
+                if option_key in self.recon_vars:
+                    self.recon_vars[option_key].set(is_checked)
+        
+        # Update "All" checkbox based on current state
+        all_checked = all(var.get() for var in self.recon_module_vars.values())
+        self.recon_all_var.set(all_checked)
                 
     def setup_results_tab(self):
         """Setup results display tab"""

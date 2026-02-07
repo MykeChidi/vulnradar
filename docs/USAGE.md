@@ -466,6 +466,76 @@ python -m vulnradar https://example.com \
     --use-selenium
 ```
 
+
+## Multi-Target Scanning
+
+### Generate Configuration Template
+
+```bash
+python -m vulnradar --show-multi-config
+```
+- Creates a `multi_target_config.yaml` with examples and comments
+- Modify the file to add your targets
+- See [Multi-Target Scanning Guide](MULTI_TARGET.md) for detailed format
+
+### Run Multi-Target Scan (Concurrent)
+
+```bash
+python -m vulnradar --targets-file multi_target_config.yaml
+```
+- Scans multiple targets concurrently
+- Default: 3 concurrent scans at a time
+- Outputs summary and per-target results
+
+### Run Sequential Multi-Target Scan
+
+```bash
+python -m vulnradar --targets-file multi_target_config.yaml --sequential
+```
+- Scans targets one at a time
+- Useful for rate-limited or fragile targets
+- More stable but slower
+
+### Adjust Concurrency Level
+
+```bash
+python -m vulnradar --targets-file multi_target_config.yaml --max-concurrent 5
+```
+- Default: 3 concurrent scans
+- Increase for faster scanning (if resources allow)
+- Decrease for stability or rate limiting
+
+### Multi-Target Configuration Example
+
+```yaml
+targets:
+  - url: "https://example.com"
+    name: "Example Site"
+    timeout: 120
+    retries: 2
+    options:
+      crawl_depth: 3
+      timeout: 10
+      max_workers: 5
+
+  - url: "https://api.example.com"
+    name: "Example API"
+    timeout: 180
+    retries: 1
+    options:
+      crawl_depth: 2
+      max_workers: 3
+```
+
+Each target can have:
+- `url` (required): Target URL to scan
+- `name` (optional): Display name for reports
+- `timeout` (optional): Timeout per target in seconds
+- `retries` (optional): Auto-retry on failure
+- `options` (optional): Target-specific scan options
+
+For detailed multi-target documentation, see [Multi-Target Scanning Guide](MULTI_TARGET.md).
+
 ## Help 
 
 ### Show Help

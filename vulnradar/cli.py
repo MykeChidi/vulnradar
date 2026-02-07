@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from colorama import Fore, Style
 from .core import VulnRadar
+from .multi_target import MultiTargetScanner
 from .utils.error_handler import get_global_error_handler, handle_errors
 
 # Setup error handler
@@ -107,13 +108,52 @@ def parse_arguments():
     cache_opt.add_argument("--cache-ttl", type=int, default=3600, help="Cache time-to-live in seconds")
     cache_opt.add_argument("--no-cache", action="store_true", help="Disable result caching")
     cache_opt.add_argument("--clear-cache", action="store_true", help="Clear cache before scanning")
+    
+    # Multi-target options
+    multi_opt = parser.add_argument_group('Multi-Target Options', 'Configure multi-target scanning')
+    multi_opt.add_argument("--show-multi-config", help="Generate multi-target config template (yaml) and exit")
+    multi_opt.add_argument("--targets-file", metavar="CONFIG_FILE", help="Scan multiple targets using configuration file")
+    multi_opt.add_argument("--max-concurrent", type=int, default=3, help="Max concurrent target scans")
+    multi_opt.add_argument("--sequential", action="store_true", help="Run multi-target scans sequentially (no concurrency)")
+    
     args = parser.parse_args()
 
-    if args.url is None and not args.gui:
+    # Handle --show-multi-config option
+    if args.show_multi_config:
+        return handle_multi_config()
+
+    if args.url is None and not args.gui and not args.targets_file:
         show_usage_examples()
         sys.exit(0)
 
+    # Validate that both url and targets_file are not provided
+    if args.url is not None and args.targets_file is not None:
+        parser.error("Cannot specify both 'url' and '--targets-file'. Please use one or the other.")
+
     return args 
+
+
+def handle_multi_config():
+    """Generate and save multi-target config template."""
+    try:
+        content = MultiTargetScanner.generate_config_template()
+        
+        filename = f"multi_target_config.yaml"
+        output_path = Path.cwd() / filename
+        
+        print(f"\n{Fore.GREEN}✓ Configuration template generated successfully!{Style.RESET_ALL}")
+        print(f"  {Fore.CYAN}Location:{Style.RESET_ALL} {output_path.absolute()}")
+        print(f"\n{Fore.YELLOW}Next steps:{Style.RESET_ALL}")
+        print(f"  1. Open '{filename}' in your editor")
+        print(f"  2. Add your target URLs and customize options")
+        print(f"  3. Save the file")
+        print(f"  4. Run: {Fore.CYAN}python -m vulnradar --targets-file {filename}{Style.RESET_ALL}")
+        print()
+        
+        sys.exit(0)
+    except Exception as e:
+        print(f"{Fore.RED}✗ Error generating config: {str(e)}{Style.RESET_ALL}", file=sys.stderr)
+        sys.exit(1)
 
 
 def show_usage_examples():
@@ -179,6 +219,20 @@ def show_usage_examples():
                 python -m vulnradar https://example.com \\
                     --recon-only --recon-all --clear-cache --cache-dir ./recon_cache
 
+            {Fore.YELLOW}MULTI-TARGET SCANNING:{Style.RESET_ALL}
+
+            {Fore.GREEN}Generate Multi-Target Config Template:{Style.RESET_ALL}
+                python -m vulnradar --show-multi-config
+
+            {Fore.GREEN}Scan Multiple Targets:{Style.RESET_ALL}
+                python -m vulnradar --targets-file multi_target_config.yaml
+
+            {Fore.GREEN}Sequential Multi-Target Scan:{Style.RESET_ALL}
+                python -m vulnradar --targets-file multi_target_config.yaml --sequential
+
+            {Fore.GREEN}Concurrent with Custom Limit:{Style.RESET_ALL}
+                python -m vulnradar --targets-file multi_target_config.yaml --max-concurrent 5
+
             {Fore.YELLOW}ADVANCED OPTIONS:{Style.RESET_ALL}
 
             {Fore.GREEN}Custom Output Directory:{Style.RESET_ALL}
@@ -199,7 +253,7 @@ def show_usage_examples():
             {Fore.YELLOW}HELP:{Style.RESET_ALL}
                 python -m vulnradar --help      # Show all available options
 
-            {Fore.CYAN}For detailed documentation, visit: https://github.com/MykeChidi/vulnradar{Style.RESET_ALL}
+            {Fore.CYAN}For detailed documentation, visit: https://github.com/MykeChidi/vulnradar {Style.RESET_ALL}
             """)
 
 @handle_errors(
@@ -228,6 +282,84 @@ def launch_gui(prefill_url=None):
     root.geometry(f'{width}x{height}+{x}+{y}')
     
     root.mainloop()
+
+@handle_errors(
+        error_handler=error_handler,
+        user_message="Failed to run multi-target scan. Please check your configuration and try again.",
+        return_on_error=None
+)
+def run_multi_target_scan(args, options) -> int:
+    """Run multi-target scan from configuration file."""
+    try:
+        config_file = Path(args.targets_file)
+        
+        if not config_file.exists():
+            print(f"{Fore.RED}Error: Configuration file not found: {config_file}{Style.RESET_ALL}", file=sys.stderr)
+            return 1
+        
+        print(f"{Fore.CYAN}Loading multi-target configuration from: {config_file.absolute()}{Style.RESET_ALL}\n")
+        
+        # Initialize multi-target scanner
+        scanner = MultiTargetScanner(
+            config_file=config_file,
+            default_options=options,
+            concurrent=not args.sequential,
+            max_concurrent=args.max_concurrent
+        )
+        
+        print(f"{Fore.CYAN}Loaded {len(scanner.targets)} target(s){Style.RESET_ALL}\n")
+        
+        # Run scans
+        results = asyncio.run(scanner.scan_all())
+        
+        # Generate and display summary
+        scanner.print_summary()
+        
+        # Save detailed reports
+        output_dir = Path(args.output_dir)
+        scanner.save_summary(output_dir / "multi_target_summary.json")
+        scanner.save_detailed_results(output_dir / "multi_target_results")
+        
+        print(f"{Fore.GREEN}✓ Multi-target scan completed!{Style.RESET_ALL}")
+        print(f"  Summary: {output_dir / 'multi_target_summary.json'}")
+        print(f"  Results: {output_dir / 'multi_target_results'}\n")
+        
+        return 0
+        
+    except Exception as e:
+        return 1
+
+@handle_errors(
+    error_handler=error_handler,
+    user_message="Failed to run scan. Please check your configuration and try again.",
+    return_on_error=None
+)
+def run_single_target_scan(url: str, options):
+    """Run scan on a single target."""
+    # Initialize scanner
+    scanner = VulnRadar(url, options)
+    
+    # Run scan
+    results = asyncio.run(scanner.scan())
+    
+    # Print summary
+    if not results.get("error"):
+        print(f"\n{Fore.GREEN}Scan completed successfully!{Style.RESET_ALL}")
+        print(f"Target: {results['target']}")
+        print(f"Scan time: {results['scan_time']}")
+        print(f"Endpoints discovered: {len(results['endpoints'])}")
+        print(f"Vulnerabilities found: {len(results['vulnerabilities'])}")
+        
+        if results['vulnerabilities']:
+            print("\nVulnerability Summary:")
+            for i, vuln in enumerate(results['vulnerabilities'], 1):
+                severity_color = Fore.RED if vuln['severity'] == 'High' else \
+                                Fore.YELLOW if vuln['severity'] == 'Medium' else Fore.BLUE
+                print(f"{i}. {severity_color}{vuln['type']} ({vuln['severity']}){Style.RESET_ALL} at {vuln['endpoint']}")
+        
+        print(f"\nReports saved to: {Path(options['output_dir']).absolute()}")
+    else:
+        print(f"\n{Fore.RED}Scan failed: {results['error']}{Style.RESET_ALL}")
 
 @handle_errors(
     error_handler=error_handler,
@@ -313,30 +445,11 @@ def main():
         "db_path": args.db_path,
     }
     
-    # Initialize scanner
-    scanner = VulnRadar(args.url, options)
-    
-    # Run scan
-    results = asyncio.run(scanner.scan())
-    
-    # Print summary
-    if not results.get("error"):
-        print(f"\n{Fore.GREEN}Scan completed successfully!{Style.RESET_ALL}")
-        print(f"Target: {results['target']}")
-        print(f"Scan time: {results['scan_time']}")
-        print(f"Endpoints discovered: {len(results['endpoints'])}")
-        print(f"Vulnerabilities found: {len(results['vulnerabilities'])}")
-        
-        if results['vulnerabilities']:
-            print("\nVulnerability Summary:")
-            for i, vuln in enumerate(results['vulnerabilities'], 1):
-                severity_color = Fore.RED if vuln['severity'] == 'High' else \
-                                Fore.YELLOW if vuln['severity'] == 'Medium' else Fore.BLUE
-                print(f"{i}. {severity_color}{vuln['type']} ({vuln['severity']}){Style.RESET_ALL} at {vuln['endpoint']}")
-        
-        print(f"\nReports saved to: {Path(options['output_dir']).absolute()}")
+    if args.targets_file:
+        run_multi_target_scan(args, options)
     else:
-        print(f"\n{Fore.RED}Scan failed: {results['error']}{Style.RESET_ALL}")
+        # Single target mode
+        run_single_target_scan(args.url, options)
     
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # `VulnRadar` - A Web Vulnerability Scanner
 
-[![Python Version](https://img.shields.io/badge/python-3.10+%2B-blue)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-AGPLv3-green)](LICENSE)
 [![GitHub Issues](https://img.shields.io/github/issues/MykeChidi/vulnradar)](https://github.com/MykeChidi/vulnradar/issues)
 
@@ -63,6 +63,13 @@ python -m vulnradar --gui
 - Caching system for result optimization
 - Database storage option
 
+### 🎯 Multi-Target Scanning
+- Scan multiple targets from a single YAML configuration file
+- Per-target configuration (timeout, retries, scan options)
+- Concurrent or sequential scanning modes
+- Aggregated reporting across all targets
+- Individual target result files
+
 ### 🖥️ User Interfaces
 - **Command-Line Interface (CLI)** - Full automation support
 - **Graphical User Interface (GUI)** - Tkinter-based GUI
@@ -120,6 +127,15 @@ python -m vulnradar https://app.example.com \
     --cookies "session=abc123;auth=xyz789"
 ```
 
+### Multi-Target Scanning
+```bash
+# Generate configuration template
+python -m vulnradar --show-multi-config
+
+# Scan multiple targets from YAML config
+python -m vulnradar --targets-file multi_target_config.yaml
+```
+
 ### Database Storage
 ```bash
 python -m vulnradar https://example.com \
@@ -136,6 +152,7 @@ Complete documentation for all use cases:
 - **🚀 [Getting Started](docs/GETTING_STARTED.md)** - First scan walkthrough
 - **📖 [Usage Guide](docs/USAGE.md)** - Complete CLI reference
 - **⚙️ [Configuration](docs/CONFIGURATION.md)** - Configuration options reference
+- **🎯 [Multi-Target Scanning](docs/MULTI_TARGET.md)** - Multi-target configuration and usage
 
 ### **Troubleshooting**
 - **❓ [Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
@@ -199,4 +216,4 @@ This tool is provided "as is" for educational and authorized security testing pu
 ---
 
 **VulnRadar** - Making web application security testing accessible and automated.
- *Copyright (c) 2026 MykeChidi.*
+- *Copyright (c) 2026 MykeChidi.*

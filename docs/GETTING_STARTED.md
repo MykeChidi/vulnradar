@@ -272,6 +272,18 @@ python -m vulnradar https://example.com --excel
 
 # Specific vulnerabilities only
 python -m vulnradar https://example.com --no-xss --no-csrf
+
+# Generate multi-target config template
+python -m vulnradar --show-multi-config
+
+# Scan multiple targets
+python -m vulnradar --targets-file multi_target_config.yaml
+
+# Sequential multi-target scan
+python -m vulnradar --targets-file multi_target_config.yaml --sequential
+
+# Custom concurrency limit
+python -m vulnradar --targets-file multi_target_config.yaml --max-concurrent 5
 ```
 
 ## Getting Help
@@ -279,8 +291,9 @@ python -m vulnradar https://example.com --no-xss --no-csrf
 - **Questions?** Check [Troubleshooting Guide](TROUBLESHOOTING.md)
 - **Need details?** Read [Usage Guide](USAGE.md)
 - **Configuration help?** See [Configuration Guide](CONFIGURATION.md)
+- **Multi-target scanning?** See [Multi-Target Scanning Guide](MULTI_TARGET.md)
 - **Stuck?** Create an issue on GitHub or check existing issues
 
 ---
 
-**Ready to go deeper?** Explore the [Usage Guide](USAGE.md) to master all VulnRadar options!
+**Ready to go deeper?** Explore the [Usage Guide](USAGE.md) to master all VulnRadar options or check [Multi-Target Scanning](MULTI_TARGET.md) to scan multiple targets at once!

@@ -195,6 +195,31 @@ python -m vulnradar https://example.com --recon-misc \
 | `--no-check-dev-artifacts` | Skip dev artifacts check |
 | `--no-backend-tests` | Skip backend tests |
 
+### Multi-Target Options
+
+```bash
+# Generate a multi-target YAML template
+python -m vulnradar --show-multi-config
+
+# Run a multi-target scan using a configuration file
+python -m vulnradar --targets-file multi_target_config.yaml
+
+# Run sequential multi-target scan (no concurrency)
+python -m vulnradar --targets-file multi_target_config.yaml --sequential
+
+# Specify maximum concurrent target scans
+python -m vulnradar --targets-file multi_target_config.yaml --max-concurrent 5
+```
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `--show-multi-config` | flag | False | Generate a sample `multi_target_config.yaml` and exit |
+| `--targets-file` | string | None | Path to YAML config containing multiple targets |
+| `--max-concurrent` | int | 3 | Maximum concurrent target scans |
+| `--sequential` | flag | False | Run targets sequentially (no concurrency) |
+
+See [Multi-Target Scanning](MULTI_TARGET.md) for full details and the YAML template format.
+
 ### Output Configuration
 
 ```bash

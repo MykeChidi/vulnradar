@@ -1,4 +1,5 @@
 <div align="center">
+<<<<<<< HEAD
   <img src="./assets/vulnradar.png" alt="Logo" width="200"/>
   <h1> VulnRadar </h1>
 </div>

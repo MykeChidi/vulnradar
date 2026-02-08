@@ -434,6 +434,7 @@ class MiscellaneousAnalyzer:
                                     )
                                     debug_info["risk_level"] = "high"
                     except Exception:
+                        self.logger.debug(f"Debug parameter test failed for {param}", exc_info=False)
                         continue
                         
         except Exception as e:
@@ -483,6 +484,7 @@ class MiscellaneousAnalyzer:
                                     f"Remove or protect {artifact}"
                                 )
                     except Exception:
+                        self.logger.debug(f"Artifact check failed for {artifact}", exc_info=False)
                         continue
                         
         except Exception as e:

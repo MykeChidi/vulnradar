@@ -228,7 +228,7 @@ class CommandInjectionScanner(BaseScanner):
         json_test_params = {
             'command': 'test', 'cmd': 'test', 'exec': 'test', 'execute': 'test',
             'system': 'test', 'shell': 'test', 'file': 'test.txt', 'filename': 'test.txt',
-            'path': '/tmp/test', 'directory': '/tmp', 'url': 'http://example.com',
+            'path': '/tmp/test', 'directory': '/tmp', 'url': 'http://example.com', # nosec B108
             'host': 'example.com', 'ping': 'example.com', 'backup': 'test.zip',
             'restore': 'test.zip', 'input': 'test', 'data': 'test','value': 'test',
             'content': 'test', 'message': 'test',

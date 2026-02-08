@@ -78,7 +78,7 @@ class Validator:
         blocked_domains = [
             'localhost', 'metadata.google.internal',
             'metadata', 'metadata.azure.com'
-             '127.0.0.1', '0.0.0.0', '169.254.169.254',
+             '127.0.0.1', '0.0.0.0', '169.254.169.254', #nosec B104
         ]
         
         if hostname.lower() in blocked_domains:

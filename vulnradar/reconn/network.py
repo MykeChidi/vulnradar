@@ -427,6 +427,7 @@ class NetworkInfrastructureAnalyzer:
                 records = self.dns_resolver.resolve(self.target.hostname, 'A')
                 responses.update([str(r) for r in records])
             except Exception:
+                self.logger.debug(f"DNS query failed during round-robin detection", exc_info=False)
                 continue
         return list(responses)
         

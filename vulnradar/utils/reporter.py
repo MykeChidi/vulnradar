@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
@@ -30,7 +30,8 @@ class ReportGenerator:
         self.title = title
         self.output_dir = Path(output_dir)
         self.templates = Environment(
-            loader=FileSystemLoader(Path(__file__).parent / "templates")
+            loader=FileSystemLoader(Path(__file__).parent / "templates"),
+            autoescape=select_autoescape(["html", "xml"])
         )
 
     @handle_errors(

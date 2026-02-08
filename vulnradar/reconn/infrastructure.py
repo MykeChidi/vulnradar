@@ -324,6 +324,7 @@ class InfrastructureRelationshipMapper:
                             if subdomain.endswith("." + self.target.hostname):
                                 subdomains.add(subdomain)
                 except Exception:
+                    self.logger.debug(f"Zone transfer failed for nameserver {ns}", exc_info=False)
                     continue
                     
         except Exception as e:
@@ -616,6 +617,7 @@ class InfrastructureRelationshipMapper:
                                                     f"Nameserver match: {ns_str}"
                                                 )
                                 except Exception:
+                                    self.logger.debug(f"Failed to resolve NS records for CDN detection", exc_info=False)
                                     pass
                                     
                             # Check CNAME records for CDN domains
@@ -632,6 +634,7 @@ class InfrastructureRelationshipMapper:
                                                     f"CNAME match: {cname_str}"
                                                 )
                                 except Exception:
+                                    self.logger.debug(f"Failed to resolve CNAME records for CDN detection", exc_info=False)
                                     pass
                                     
                             if evidence:
@@ -1183,6 +1186,7 @@ class InfrastructureRelationshipMapper:
                                                 "status": "active"
                                             })
                                     except Exception:
+                                        self.logger.debug(f"Failed to parse URL {url} for dependency mapping", exc_info=False)
                                         continue
                                         
                         # Check for API dependencies
@@ -1229,6 +1233,7 @@ class InfrastructureRelationshipMapper:
                             "risk_level": "medium" if len(domains) > 5 else "low"
                         })
                 except Exception:
+                    self.logger.debug(f"Reverse DNS lookup failed for {ip}", exc_info=False)
                     continue
                     
             # Check for shared name servers
@@ -1246,6 +1251,7 @@ class InfrastructureRelationshipMapper:
                             "risk_level": "low"
                         })
                     except Exception:
+                        self.logger.debug(f"Failed to check nameserver {ns} for shared infrastructure", exc_info=False)
                         continue
                         
             except Exception as e:

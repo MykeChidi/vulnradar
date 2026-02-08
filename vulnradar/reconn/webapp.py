@@ -560,6 +560,7 @@ class WebApplicationAnalyzer:
                                         "endpoints": len(data.get("paths", {}))
                                     })
                             except Exception:
+                                self.logger.debug(f"Failed to parse API documentation at {url}")
                                 continue
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 await self.rate_limiter.report_failure()  
@@ -773,10 +774,10 @@ class WebApplicationAnalyzer:
     async def _find_secrets(self, content: str, analysis: Dict):
         """Find potential secrets in JavaScript code."""
         secret_patterns = {
-            "api_key": r'(?i)api[_-]?key["\']?\s*[:=]\s*["\']([^"\']+)["\']',
-            "secret": r'(?i)secret["\']?\s*[:=]\s*["\']([^"\']+)["\']',
-            "password": r'(?i)password["\']?\s*[:=]\s*["\']([^"\']+)["\']',
-            "token": r'(?i)token["\']?\s*[:=]\s*["\']([^"\']+)["\']',
+            "api_key": r'(?i)api[_-]?key["\']?\s*[:=]\s*["\']([^"\']+)["\']', #nosec B105 - This is a regex pattern, not an actual secret
+            "secret": r'(?i)secret["\']?\s*[:=]\s*["\']([^"\']+)["\']', #nosec B105
+            "password": r'(?i)password["\']?\s*[:=]\s*["\']([^"\']+)["\']', #nosec B105
+            "token": r'(?i)token["\']?\s*[:=]\s*["\']([^"\']+)["\']', #nosec B105
             "aws_key": r'(?i)aws[_-]?(?:access[_-]?)?key["\']?\s*[:=]\s*["\']([^"\']+)["\']'
         }
         

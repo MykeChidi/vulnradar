@@ -583,6 +583,7 @@ class SecurityInfrastructureAnalyzer:
                         if b"Content-Encoding:" in response:
                             return True
                     except Exception:
+                        self.logger.debug("TLS compression support failed, assuming not vulnerable", exc_info=False)
                         pass
                         
             return False

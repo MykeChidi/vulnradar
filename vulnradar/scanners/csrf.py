@@ -3,6 +3,7 @@
 from typing import Dict, List, Optional, Any
 import aiohttp
 from .base import BaseScanner
+from ast import literal_eval
 from ..utils.error_handler import get_global_error_handler, handle_async_errors, ScanError
 
 # Setup error handler
@@ -351,8 +352,10 @@ class CSRFScanner(BaseScanner):
             for form in forms:
                 if form['action'] == url or (not form['action'] and url == url):
                     # Test if we can still submit without proper CSRF protection
-                    test_data = eval(payload) if payload.startswith('{') else {}
-                    
+                    try:
+                        test_data = literal_eval(payload) if payload.startswith('{') else {}
+                    except (ValueError, SyntaxError):
+                        test_data = {}
                     if isinstance(self.timeout, aiohttp.ClientTimeout):
                         base = self.timeout.total
                     else:

@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./assets/vulnradar.png" alt="Logo" width="200"/>
+  <img src="./assets/vulnradar.svg" alt="Logo" width="200"/>
 </div>
 
 # `VulnRadar` - A Web Vulnerability Scanner

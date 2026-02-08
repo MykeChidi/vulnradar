@@ -1,10 +1,9 @@
 <div align="center">
-<<<<<<< HEAD
   <img src="./assets/vulnradar.png" alt="Logo" width="200"/>
   <h1> VulnRadar </h1>
+  <h2> A Web Vulnerability Scanner </h2>
 </div>
 
-# A Web Vulnerability Scanner
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-AGPLv3-green)](LICENSE)

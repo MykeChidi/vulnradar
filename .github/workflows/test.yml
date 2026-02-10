@@ -54,7 +54,7 @@ jobs:
           pip install -r requirements_dev.txt
 
       - name: "Run linting and type checks"
-        run: ./scripts/tests_runner.sh --lint --type-check
+        run: bash scripts/tests_runner.sh --lint --type-check
 
         
   ########################################
@@ -83,7 +83,7 @@ jobs:
           pip install -r requirements_dev.txt
 
       - name: "Run security checks"
-        run: ./scripts/tests_runner.sh --security
+        run: bash scripts/tests_runner.sh --security
         continue-on-error: false
 
       - name: "Upload Bandit report"
@@ -133,7 +133,7 @@ jobs:
           pip install -r requirements_dev.txt
 
       - name: "Run tests with coverage report"
-        run: ./scripts/tests_runner.sh --coverage
+        run: bash scripts/tests_runner.sh --coverage
 
       - name: "Upload coverage to Codecov"
         uses: codecov/codecov-action@v4

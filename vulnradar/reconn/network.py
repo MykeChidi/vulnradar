@@ -346,7 +346,7 @@ class NetworkInfrastructureAnalyzer:
             try:
                 import ctypes
 
-                return ctypes.windll.shell32.IsUserAnAdmin() != 0
+                return ctypes.windll.shell32.IsUserAnAdmin() != 0  # type: ignore[attr-defined]
             except Exception:
                 return False
         return False

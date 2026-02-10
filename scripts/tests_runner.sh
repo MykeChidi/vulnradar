@@ -218,7 +218,7 @@ run_type_checking() {
     
     check_command_exists "mypy" || return 1
     
-    local cmd="mypy vulnradar --ignore-missing-imports"
+    local cmd="mypy vulnradar --install-types --ignore-missing-imports"
     [ "$VERBOSE" = true ] && cmd="$cmd --show-error-codes --pretty"
     
     if eval "$cmd" > /dev/null 2>&1; then

@@ -2,10 +2,7 @@ __pycache__
 scan_results/
 cache/
 .venv/
-Include/
-Scripts/
-Lib/
-pyvenv.cfg
+
 .pytest_cache/
 .benchmarks/
 

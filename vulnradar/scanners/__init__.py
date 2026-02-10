@@ -1,11 +1,11 @@
 # vulnradar/scanners/__init__.py
-from .xss import XSSScanner
-from .sqli import SQLInjectionScanner
+from .comm_injection import CommandInjectionScanner
 from .csrf import CSRFScanner
 from .file_inclusion import FileInclusionScanner
-from .ssrf import SSRFScanner
 from .path_traversal import PathTraversalScanner
-from .comm_injection import CommandInjectionScanner
+from .sqli import SQLInjectionScanner
+from .ssrf import SSRFScanner
+from .xss import XSSScanner
 
 __all__ = [
     "XSSScanner",
@@ -14,5 +14,5 @@ __all__ = [
     "FileInclusionScanner",
     "SSRFScanner",
     "PathTraversalScanner",
-    "CommandInjectionScanner"
+    "CommandInjectionScanner",
 ]

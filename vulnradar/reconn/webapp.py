@@ -1,14 +1,20 @@
 # vulnradar/reconn/webapp.py - Web Application Analysis Module
 import asyncio
-import aiohttp
-from typing import Any, Dict, List, Optional, Mapping
 import re
 from pathlib import Path
+from typing import Any, Dict, List, Mapping, Optional
+
+import aiohttp
 from bs4 import BeautifulSoup
+
+from ..utils.cache import ScanCache
+from ..utils.error_handler import (
+    NetworkError,
+    get_global_error_handler,
+    handle_async_errors,
+)
 from ..utils.logger import setup_logger
 from ..utils.rate_limit import RateLimiter
-from ..utils.cache import ScanCache
-from ..utils.error_handler import get_global_error_handler, handle_async_errors, NetworkError, ParseError
 from ._target import ReconTarget
 
 error_handler = get_global_error_handler()
@@ -19,48 +25,50 @@ class WebApplicationAnalyzer:
     Handles web application analysis including technology stack detection,
     content discovery, and JavaScript analysis.
     """
-    
+
     def __init__(self, target: ReconTarget, options: Dict):
         self.target = target
         self.options = options
         self.logger = setup_logger("webapp_recon", file_specific=True)
         self.rate_limiter = RateLimiter()
-        
+
         # Initialize cache
         self._cache: Optional[ScanCache]
         if not options.get("no_cache", False):
             cache_dir = Path(options.get("cache_dir", "cache")) / "webapp"
-            self._cache = ScanCache(cache_dir, default_ttl=options.get("cache_ttl", 3600))
+            self._cache = ScanCache(
+                cache_dir, default_ttl=options.get("cache_ttl", 3600)
+            )
         else:
             self._cache = None
 
     @handle_async_errors(
         error_handler=error_handler,
         user_message="Web application reconnaissance analysis encountered an error",
-        return_on_error={}
+        return_on_error={},
     )
     async def analyze(self) -> Dict:
         """
         Perform comprehensive web application analysis.
-        
+
         Returns:
             Dict containing all web application findings
         """
         results = {}
-        
+
         # Detect technology stack
-        results['technologies'] = await self._detect_technologies()
-        
+        results["technologies"] = await self._detect_technologies()
+
         # Analyze content
-        if self.options.get('content_discovery', True):
-            results['content'] = await self._discover_content()
-            
+        if self.options.get("content_discovery", True):
+            results["content"] = await self._discover_content()
+
         # Analyze JavaScript
-        if self.options.get('js_analysis', True):
-            results['javascript'] = await self._analyze_javascript()
-            
+        if self.options.get("js_analysis", True):
+            results["javascript"] = await self._analyze_javascript()
+
         return results
-        
+
     async def _detect_technologies(self) -> Dict:
         """
         Detect technologies used in the web application.
@@ -72,9 +80,9 @@ class WebApplicationAnalyzer:
             "servers": [],
             "javascript_libs": [],
             "cms": None,
-            "cloud_services": []
+            "cloud_services": [],
         }
-        
+
         try:
             await self.rate_limiter.acquire()
             async with aiohttp.ClientSession() as session:
@@ -83,92 +91,98 @@ class WebApplicationAnalyzer:
                         await self.rate_limiter.report_success()
                         html = await response.text()
                         headers = response.headers
-                        
+
                         # Analyze response headers
                         tech_results.update(await self._analyze_headers(headers))
-                        
+
                         # Analyze HTML content
                         try:
-                            soup = BeautifulSoup(html, 'lxml')
+                            soup = BeautifulSoup(html, "lxml")
                         except Exception as parse_err:
-                            self.logger.debug(f"lxml parser failed, falling back to html.parser: {str(parse_err)}")
-                            soup = BeautifulSoup(html, 'html.parser')
+                            self.logger.debug(
+                                f"lxml parser failed, falling back to html.parser: {str(parse_err)}"
+                            )
+                            soup = BeautifulSoup(html, "html.parser")
                         tech_results.update(await self._analyze_html(soup))
-                        
+
                         # Analyze JavaScript
-                        tech_results["javascript_libs"] = await self._detect_js_libraries(soup)
-                        
+                        tech_results["javascript_libs"] = (
+                            await self._detect_js_libraries(soup)
+                        )
+
                         return tech_results
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                    error_msg = f"Technology detection failed for {self.target.url}: {str(e)}"
+                    error_msg = (
+                        f"Technology detection failed for {self.target.url}: {str(e)}"
+                    )
                     self.logger.error(error_msg)
                     error_handler.handle_error(
                         NetworkError(error_msg),
-                        context={"url": self.target.url, "error_type": "tech_detection_failure"}
+                        context={
+                            "url": self.target.url,
+                            "error_type": "tech_detection_failure",
+                        },
                     )
-                    await self.rate_limiter.report_failure() 
-                    raise    
+                    await self.rate_limiter.report_failure()
+                    raise
         except Exception as e:
             error_msg = f"Technology detection failed for {self.target.url}: {str(e)}"
             self.logger.error(error_msg)
             error_handler.handle_error(
                 NetworkError(error_msg),
-                context={"url": self.target.url, "error_type": "unexpected_tech_detection_error"}
+                context={
+                    "url": self.target.url,
+                    "error_type": "unexpected_tech_detection_error",
+                },
             )
             return {"error": str(e)}
-            
+
     async def _analyze_headers(self, headers: Mapping[str, str]) -> Dict[str, Any]:
         """
         Analyze response headers to identify technologies.
         """
-        tech_info: Dict[str, Any] = {
-            "servers": [],
-            "languages": [],
-            "frameworks": []
-        }
-        
+        tech_info: Dict[str, Any] = {"servers": [], "languages": [], "frameworks": []}
+
         header_signatures = {
             "Server": {
                 "Apache": "servers",
                 "nginx": "servers",
                 "IIS": "servers",
-                "LiteSpeed": "servers"
+                "LiteSpeed": "servers",
             },
             "X-Powered-By": {
                 "PHP": "languages",
                 "ASP.NET": "languages",
                 "Express": "frameworks",
-                "Django": "frameworks"
+                "Django": "frameworks",
             },
-            "X-AspNet-Version": {
-                "ASP.NET": "frameworks"
-            },
-            "X-Runtime": {
-                "Ruby": "languages"
-            }
+            "X-AspNet-Version": {"ASP.NET": "frameworks"},
+            "X-Runtime": {"Ruby": "languages"},
         }
-        
+
         for header, value in headers.items():
             if header in header_signatures:
                 value_lower = value.lower()
                 for tech, category in header_signatures[header].items():
                     if tech.lower() in value_lower:
                         if tech not in tech_info[category]:
-                            tech_info[category].append({
-                                "name": tech,
-                                "version": self._extract_version(value),
-                                "confidence": "high",
-                                "source": f"{header} header"
-                            })
-                            
+                            tech_info[category].append(
+                                {
+                                    "name": tech,
+                                    "version": self._extract_version(value),
+                                    "confidence": "high",
+                                    "source": f"{header} header",
+                                }
+                            )
+
         return tech_info
-        
+
     def _extract_version(self, value: str) -> Optional[str]:
         """Extract version information from header value."""
         version_pattern = r"[\d]+(?:\.[\d]+)*(?:-[a-zA-Z0-9_]+)?"
         match = re.search(version_pattern, value)
         return match.group(0) if match else None
-        
+
     async def _analyze_html(self, soup: BeautifulSoup) -> Dict:
         """
         Analyze HTML content to identify technologies.
@@ -176,19 +190,19 @@ class WebApplicationAnalyzer:
         tech_info: Dict[str, Any] = {
             "frameworks": [],
             "javascript_libs": [],
-            "cms": None
+            "cms": None,
         }
-        
+
         # Check meta tags
         meta_signatures = {
             "generator": {
                 "WordPress": "cms",
                 "Drupal": "cms",
                 "Joomla": "cms",
-                "Ghost": "cms"
+                "Ghost": "cms",
             }
         }
-        
+
         for name, signatures in meta_signatures.items():
             meta = soup.find("meta", attrs={"name": name})
             if meta and "content" in meta.attrs:
@@ -200,36 +214,38 @@ class WebApplicationAnalyzer:
                                 "name": tech,
                                 "version": self._extract_version(content),
                                 "confidence": "high",
-                                "source": "meta generator tag"
+                                "source": "meta generator tag",
                             }
-                            
+
         # Check CSS links for common frameworks
         css_signatures = {
             "bootstrap": "Bootstrap",
             "foundation": "Foundation",
             "materialize": "Materialize",
-            "bulma": "Bulma"
+            "bulma": "Bulma",
         }
-        
+
         for link in soup.find_all("link", rel="stylesheet"):
             href = link.get("href", "").lower()
             for sig, name in css_signatures.items():
                 if sig in href:
-                    tech_info["frameworks"].append({
-                        "name": name,
-                        "version": self._extract_version(href),
-                        "confidence": "high",
-                        "source": "stylesheet link"
-                    })
-                    
+                    tech_info["frameworks"].append(
+                        {
+                            "name": name,
+                            "version": self._extract_version(href),
+                            "confidence": "high",
+                            "source": "stylesheet link",
+                        }
+                    )
+
         return tech_info
-        
+
     async def _detect_js_libraries(self, soup: BeautifulSoup) -> List[Dict]:
         """
         Detect JavaScript libraries used in the application.
         """
         libraries = []
-        
+
         # Common JavaScript library signatures
         js_signatures = {
             "jquery": "jQuery",
@@ -238,39 +254,46 @@ class WebApplicationAnalyzer:
             "vue": "Vue.js",
             "lodash": "Lodash",
             "moment": "Moment.js",
-            "axios": "Axios"
+            "axios": "Axios",
         }
-        
+
         try:
             # Check script sources
             for script in soup.find_all("script", src=True):
                 src = script["src"].lower()
                 for sig, name in js_signatures.items():
                     if sig in src:
-                        libraries.append({
-                            "name": name,
-                            "version": self._extract_version(src),
-                            "confidence": "high",
-                            "source": "script src"
-                        })
-                        
+                        libraries.append(
+                            {
+                                "name": name,
+                                "version": self._extract_version(src),
+                                "confidence": "high",
+                                "source": "script src",
+                            }
+                        )
+
             # Check inline scripts for library declarations
             for script in soup.find_all("script"):
                 if script.string:
                     content = script.string.lower()
                     for sig, name in js_signatures.items():
-                        if f"require('{sig}')" in content or f'require("{sig}")' in content:
-                            libraries.append({
-                                "name": name,
-                                "confidence": "medium",
-                                "source": "inline script"
-                            })
-                            
+                        if (
+                            f"require('{sig}')" in content
+                            or f'require("{sig}")' in content
+                        ):
+                            libraries.append(
+                                {
+                                    "name": name,
+                                    "confidence": "medium",
+                                    "source": "inline script",
+                                }
+                            )
+
         except Exception as e:
             self.logger.error(f"JavaScript library detection failed: {str(e)}")
-            
+
         return libraries
-            
+
     async def _discover_content(self) -> Dict:
         """
         Discover hidden content and resources.
@@ -280,29 +303,29 @@ class WebApplicationAnalyzer:
             "directories": [],
             "files": [],
             "parameters": [],
-            "apis": []
+            "apis": [],
         }
-        
+
         try:
             # Check robots.txt
             content_results["robots"] = await self._analyze_robots_txt()
-            
+
             # Check sitemaps
             content_results["sitemaps"] = await self._analyze_sitemaps()
-            
+
             # Directory enumeration
-            if self.options.get('dir_enum', False):
+            if self.options.get("dir_enum", False):
                 content_results["directories"] = await self._enumerate_directories()
-                
+
             # API endpoint discovery
             content_results["apis"] = await self._discover_api_endpoints()
-            
+
             return content_results
-            
+
         except Exception as e:
             self.logger.error(f"Content discovery failed: {str(e)}")
             return {"error": str(e)}
-            
+
     async def _analyze_robots_txt(self) -> Dict:
         """
         Analyze robots.txt file for hidden content.
@@ -311,9 +334,9 @@ class WebApplicationAnalyzer:
             "found": False,
             "entries": [],
             "sitemaps": [],
-            "interesting_paths": []
+            "interesting_paths": [],
         }
-        
+
         try:
             await self.rate_limiter.acquire()
             async with aiohttp.ClientSession() as session:
@@ -324,53 +347,55 @@ class WebApplicationAnalyzer:
                         if response.status == 200:
                             results["found"] = True
                             content = await response.text()
-                            
+
                             # Parse robots.txt content
                             for line in content.splitlines():
                                 line = line.strip()
-                                if line and not line.startswith('#'):
-                                    if line.lower().startswith('disallow:'):
-                                        path = line.split(':', 1)[1].strip()
-                                        results["entries"].append({
-                                            "type": "disallow",
-                                            "path": path
-                                        })
-                                        if any(k in path.lower() for k in ['admin', 'backup', 'config', 'test']):
+                                if line and not line.startswith("#"):
+                                    if line.lower().startswith("disallow:"):
+                                        path = line.split(":", 1)[1].strip()
+                                        results["entries"].append(
+                                            {"type": "disallow", "path": path}
+                                        )
+                                        if any(
+                                            k in path.lower()
+                                            for k in [
+                                                "admin",
+                                                "backup",
+                                                "config",
+                                                "test",
+                                            ]
+                                        ):
                                             results["interesting_paths"].append(path)
-                                    elif line.lower().startswith('allow:'):
-                                        path = line.split(':', 1)[1].strip()
-                                        results["entries"].append({
-                                            "type": "allow",
-                                            "path": path
-                                        })
-                                    elif line.lower().startswith('sitemap:'):
-                                        sitemap = line.split(':', 1)[1].strip()
+                                    elif line.lower().startswith("allow:"):
+                                        path = line.split(":", 1)[1].strip()
+                                        results["entries"].append(
+                                            {"type": "allow", "path": path}
+                                        )
+                                    elif line.lower().startswith("sitemap:"):
+                                        sitemap = line.split(":", 1)[1].strip()
                                         results["sitemaps"].append(sitemap)
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                     await self.rate_limiter.report_failure()
-                    self.logger.error(f"Error during robots.txt analysis {str(e)}")                    
+                    self.logger.error(f"Error during robots.txt analysis {str(e)}")
         except Exception as e:
             self.logger.error(f"Robots.txt analysis failed: {str(e)}")
-            
+
         return results
-        
+
     async def _analyze_sitemaps(self) -> Dict:
         """
         Analyze sitemap files for content discovery.
         """
-        results: Dict[str, Any] = {
-            "found": False,
-            "urls": [],
-            "errors": []
-        }
-        
+        results: Dict[str, Any] = {"found": False, "urls": [], "errors": []}
+
         sitemap_locations = [
             "/sitemap.xml",
             "/sitemap_index.xml",
             "/sitemap/",
-            "/sitemap/sitemap.xml"
+            "/sitemap/sitemap.xml",
         ]
-        
+
         try:
             async with aiohttp.ClientSession() as session:
                 for location in sitemap_locations:
@@ -382,58 +407,74 @@ class WebApplicationAnalyzer:
                             if response.status == 200:
                                 results["found"] = True
                                 content = await response.text()
-                                
+
                                 # Parse XML content
-                                soup = BeautifulSoup(content, 'xml')
-                                
+                                soup = BeautifulSoup(content, "xml")
+
                                 # Look for URLs in both sitemap index and regular sitemaps
-                                urls = soup.find_all(['loc', 'url'])
+                                urls = soup.find_all(["loc", "url"])
                                 for url in urls:
                                     if url.string:
-                                        results["urls"].append({
-                                            "url": url.string.strip(),
-                                            "source": location
-                                        })
-                                        
+                                        results["urls"].append(
+                                            {
+                                                "url": url.string.strip(),
+                                                "source": location,
+                                            }
+                                        )
+
                     except Exception as e:
                         await self.rate_limiter.report_failure()
-                        results["errors"].append(f"Error analyzing {location}: {str(e)}")
-                        
+                        results["errors"].append(
+                            f"Error analyzing {location}: {str(e)}"
+                        )
+
         except Exception as e:
             self.logger.error(f"Sitemap analysis failed: {str(e)}")
-            
+
         return results
-        
+
     async def _enumerate_directories(self) -> List[Dict]:
         """
         Enumerate directories using common wordlists.
         """
         discovered = []
         common_dirs = [
-            "admin", "api", "app", "backup", "conf",
-            "css", "data", "docs", "images", "includes",
-            "js", "log", "media", "test", "tmp", "upload"
+            "admin",
+            "api",
+            "app",
+            "backup",
+            "conf",
+            "css",
+            "data",
+            "docs",
+            "images",
+            "includes",
+            "js",
+            "log",
+            "media",
+            "test",
+            "tmp",
+            "upload",
         ]
-        
+
         try:
             async with aiohttp.ClientSession() as session:
                 tasks = []
                 for directory in common_dirs:
                     url = f"{self.target.url}/{directory}/"
                     tasks.append(self._check_directory(session, url, directory))
-                    
+
                 results = await asyncio.gather(*tasks)
                 discovered.extend([r for r in results if r])
-                
+
         except Exception as e:
             self.logger.error(f"Directory enumeration failed: {str(e)}")
-            
+
         return discovered
-        
-    async def _check_directory(self, 
-                             session: aiohttp.ClientSession,
-                             url: str,
-                             directory: str) -> Optional[Dict]:
+
+    async def _check_directory(
+        self, session: aiohttp.ClientSession, url: str, directory: str
+    ) -> Optional[Dict]:
         """Check if a directory exists and analyze its response."""
         try:
             await self.rate_limiter.acquire()
@@ -445,12 +486,12 @@ class WebApplicationAnalyzer:
                         "status": response.status,
                         "size": len(await response.read()),
                         "content_type": response.headers.get("content-type", ""),
-                        "interesting": self._is_interesting_response(response)
+                        "interesting": self._is_interesting_response(response),
                     }
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                await self.rate_limiter.report_failure()  
-                return None
-            
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            await self.rate_limiter.report_failure()
+            return None
+
         # Explicitly return None for code paths that do not find a directory
         return None
 
@@ -461,13 +502,13 @@ class WebApplicationAnalyzer:
             if "text/html" in content_type:
                 return True
         return False
-        
+
     async def _discover_api_endpoints(self) -> List[Dict]:
         """
         Discover API endpoints through various techniques.
         """
         endpoints = []
-        
+
         # Common API paths to check
         api_paths = [
             "/api",
@@ -478,33 +519,32 @@ class WebApplicationAnalyzer:
             "/swagger.json",
             "/openapi.json",
             "/graphql",
-            "/graphiql"
+            "/graphiql",
         ]
-        
+
         try:
             async with aiohttp.ClientSession() as session:
                 tasks = []
                 for path in api_paths:
                     url = f"{self.target.url}{path}"
                     tasks.append(self._check_api_endpoint(session, url, path))
-                    
+
                 results = await asyncio.gather(*tasks)
                 endpoints.extend([r for r in results if r])
-                
+
                 # Also check for API documentation
                 swagger_info = await self._check_swagger_docs(session)
                 if swagger_info:
                     endpoints.extend(swagger_info)
-                    
+
         except Exception as e:
             self.logger.error(f"API endpoint discovery failed: {str(e)}")
-            
+
         return endpoints
-        
-    async def _check_api_endpoint(self,
-                                session: aiohttp.ClientSession,
-                                url: str,
-                                path: str) -> Optional[Dict]:
+
+    async def _check_api_endpoint(
+        self, session: aiohttp.ClientSession, url: str, path: str
+    ) -> Optional[Dict]:
         """Check if an API endpoint exists and analyze its response."""
         try:
             await self.rate_limiter.acquire()
@@ -517,13 +557,13 @@ class WebApplicationAnalyzer:
                         "url": url,
                         "status": response.status,
                         "content_type": content_type,
-                        "is_api": "json" in content_type.lower() or
-                                "api" in path.lower()
+                        "is_api": "json" in content_type.lower()
+                        or "api" in path.lower(),
                     }
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                await self.rate_limiter.report_failure() 
-                return None
-            
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            await self.rate_limiter.report_failure()
+            return None
+
         # Explicitly return None when API endpoint is not found or request fails
         return None
 
@@ -536,9 +576,9 @@ class WebApplicationAnalyzer:
             "/api-docs",
             "/api-docs.json",
             "/openapi.json",
-            "/openapi/v3/api-docs"
+            "/openapi/v3/api-docs",
         ]
-        
+
         for path in swagger_paths:
             try:
                 url = f"{self.target.url}{path}"
@@ -550,24 +590,30 @@ class WebApplicationAnalyzer:
                         if "json" in content_type.lower():
                             try:
                                 data = await response.json()
-                                if any(k in data for k in ["swagger", "openapi", "paths"]):
-                                    docs.append({
-                                        "type": "api_documentation",
-                                        "format": "swagger/openapi",
-                                        "url": url,
-                                        "version": data.get("swagger") or 
-                                                 data.get("openapi"),
-                                        "endpoints": len(data.get("paths", {}))
-                                    })
+                                if any(
+                                    k in data for k in ["swagger", "openapi", "paths"]
+                                ):
+                                    docs.append(
+                                        {
+                                            "type": "api_documentation",
+                                            "format": "swagger/openapi",
+                                            "url": url,
+                                            "version": data.get("swagger")
+                                            or data.get("openapi"),
+                                            "endpoints": len(data.get("paths", {})),
+                                        }
+                                    )
                             except Exception:
-                                self.logger.debug(f"Failed to parse API documentation at {url}")
+                                self.logger.debug(
+                                    f"Failed to parse API documentation at {url}"
+                                )
                                 continue
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                await self.rate_limiter.report_failure()  
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                await self.rate_limiter.report_failure()
                 continue
-                
+
         return docs
-            
+
     async def _analyze_javascript(self) -> Dict:
         """
         Analyze JavaScript files for endpoints, secrets, and vulnerabilities.
@@ -577,13 +623,13 @@ class WebApplicationAnalyzer:
             "endpoints": [],
             "possible_secrets": [],
             "vulnerabilities": [],
-            "websocket_endpoints": []
+            "websocket_endpoints": [],
         }
-        
+
         try:
             # Get all JavaScript files
             js_files = await self._get_javascript_files()
-            
+
             for analysis in js_files:
                 if not analysis:
                     continue
@@ -592,21 +638,23 @@ class WebApplicationAnalyzer:
                 # Update collected data
                 js_results["endpoints"].extend(analysis.get("endpoints", []))
                 js_results["possible_secrets"].extend(analysis.get("secrets", []))
-                js_results["vulnerabilities"].extend(analysis.get("vulnerabilities", []))
+                js_results["vulnerabilities"].extend(
+                    analysis.get("vulnerabilities", [])
+                )
                 js_results["websocket_endpoints"].extend(analysis.get("websockets", []))
 
             return js_results
-            
+
         except Exception as e:
             self.logger.error(f"JavaScript analysis failed: {str(e)}")
             return {"error": str(e)}
-            
+
     async def _get_javascript_files(self) -> List[Dict]:
         """
         Get all JavaScript files referenced in the application.
         """
         js_files = []
-        
+
         try:
             await self.rate_limiter.acquire()
             async with aiohttp.ClientSession() as session:
@@ -615,16 +663,16 @@ class WebApplicationAnalyzer:
                         await self.rate_limiter.report_success()
                         html = await response.text()
                         try:
-                            soup = BeautifulSoup(html, 'lxml')
-                        except:
-                            soup = BeautifulSoup(html, 'html.parser')
-                        
+                            soup = BeautifulSoup(html, "lxml")
+                        except Exception:
+                            soup = BeautifulSoup(html, "html.parser")
+
                         # Find all script tags with src attribute
                         scripts = soup.find_all("script", src=True)
-                        
+
                         for script in scripts:
                             src = script["src"]
-                            
+
                             # Handle relative URLs
                             if not src.startswith(("http://", "https://")):
                                 if src.startswith("//"):
@@ -633,7 +681,7 @@ class WebApplicationAnalyzer:
                                     src = f"{self.target.url}{src}"
                                 else:
                                     src = f"{self.target.url}/{src}"
-                                    
+
                             try:
                                 # Stream analysis instead of loading full content
                                 analysis = await self._analyze_js_file(session, src)
@@ -642,15 +690,17 @@ class WebApplicationAnalyzer:
                             except Exception as e:
                                 self.logger.debug(f"Failed to analyze {src}: {str(e)}")
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                    await self.rate_limiter.report_failure() 
-                    self.logger.error(f"Error during js file discovery {str(e)}")   
+                    await self.rate_limiter.report_failure()
+                    self.logger.error(f"Error during js file discovery {str(e)}")
 
         except Exception as e:
             self.logger.error(f"JavaScript file discovery failed: {str(e)}")
-            
+
         return js_files
-    
-    async def _analyze_js_file(self, session: aiohttp.ClientSession, url: str) -> Optional[Dict]:
+
+    async def _analyze_js_file(
+        self, session: aiohttp.ClientSession, url: str
+    ) -> Optional[Dict]:
         """
         Analyze a JavaScript file by streaming chunks.
         Never loads the entire file into memory.
@@ -662,104 +712,110 @@ class WebApplicationAnalyzer:
             "endpoints": [],
             "secrets": [],
             "vulnerabilities": [],
-            "websockets": []
+            "websockets": [],
         }
-        
+
         try:
             await self.rate_limiter.acquire()
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+            async with session.get(
+                url, timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
                 if response.status != 200:
                     await self.rate_limiter.report_failure()
                     return None
-                
+
                 await self.rate_limiter.report_success()
                 # Track file size
-                content_length = response.headers.get('Content-Length')
+                content_length = response.headers.get("Content-Length")
                 if content_length:
                     analysis["size"] = int(content_length)
-                    
+
                     # Skip very large files
                     if analysis["size"] > 5 * 1024 * 1024:  # 5MB limit
-                        self.logger.warning(f"Skipping large file: {url} ({analysis['size']} bytes)")
+                        self.logger.warning(
+                            f"Skipping large file: {url} ({analysis['size']} bytes)"
+                        )
                         return None
-                
+
                 # Process in chunks
                 chunk_buffer = ""
                 chunk_size = 8192
-                
+
                 async for chunk in response.content.iter_chunked(chunk_size):
                     try:
-                        chunk_text = chunk.decode('utf-8', errors='ignore')
+                        chunk_text = chunk.decode("utf-8", errors="ignore")
                         chunk_buffer += chunk_text
-                        
+
                         # Keep a sliding window to catch patterns across chunks
                         if len(chunk_buffer) > chunk_size * 2:
                             # Analyze current buffer
                             await self._analyze_js_chunk(chunk_buffer, analysis)
                             # Keep last 1KB for overlap
                             chunk_buffer = chunk_buffer[-1024:]
-                            
+
                     except UnicodeDecodeError:
                         continue
-                
+
                 # Analyze remaining buffer
                 if chunk_buffer:
                     await self._analyze_js_chunk(chunk_buffer, analysis)
-                
+
         except asyncio.TimeoutError:
             self.logger.warning(f"Timeout analyzing {url}")
             return None
         except Exception as e:
             self.logger.debug(f"Error analyzing {url}: {str(e)}")
             return None
-        
-        return analysis    
-    
+
+        return analysis
+
     async def _analyze_js_chunk(self, chunk: str, analysis: Dict) -> Dict:
         """
         Analyze a JavaScript file for interesting content in chunks.
         """
-       
+
         try:
             # Find API endpoints
             await self._find_endpoints(chunk, analysis)
-            
+
             # Look for potential secrets
             await self._find_secrets(chunk, analysis)
-            
+
             # Check for common vulnerabilities
             await self._check_js_vulnerabilities(chunk, analysis)
-            
+
             # Find WebSocket endpoints
             await self._find_websockets(chunk, analysis)
-            
+
         except Exception as e:
             self.logger.error(f"JavaScript file analysis failed: {str(e)}")
-            
+
         return analysis
-        
+
     async def _find_endpoints(self, content: str, analysis: Dict):
         """Find API endpoints in JavaScript code."""
         # Patterns for identifying endpoints
         endpoint_patterns = [
             r'(?:"|\')/api/[^"\']+(?:"|\')',  # API endpoints
             r'(?:"|\')https?://[^"\']+(?:"|\')',  # Full URLs
-            r'fetch\([^)]+\)',  # fetch calls
-            r'axios\.[a-z]+\([^)]+\)',  # axios calls
-            r'\$\.(?:get|post|put|delete)\([^)]+\)'  # jQuery AJAX calls
+            r"fetch\([^)]+\)",  # fetch calls
+            r"axios\.[a-z]+\([^)]+\)",  # axios calls
+            r"\$\.(?:get|post|put|delete)\([^)]+\)",  # jQuery AJAX calls
         ]
-        
+
         for pattern in endpoint_patterns:
             matches = re.finditer(pattern, content)
             for match in matches:
-                endpoint = match.group(0).strip('\'"')
+                endpoint = match.group(0).strip("'\"")
                 if endpoint not in [e["url"] for e in analysis["endpoints"]]:
-                    analysis["endpoints"].append({
-                        "url": endpoint,
-                        "type": "api",
-                        "method": self._guess_http_method(match.group(0))
-                    })
-                    
+                    analysis["endpoints"].append(
+                        {
+                            "url": endpoint,
+                            "type": "api",
+                            "method": self._guess_http_method(match.group(0)),
+                        }
+                    )
+
     def _guess_http_method(self, code_snippet: str) -> str:
         """Guess HTTP method from code snippet."""
         if "post" in code_snippet.lower():
@@ -770,117 +826,124 @@ class WebApplicationAnalyzer:
             return "DELETE"
         else:
             return "GET"
-            
+
     async def _find_secrets(self, content: str, analysis: Dict):
         """Find potential secrets in JavaScript code."""
-        secret_patterns = {
-            "api_key": r'(?i)api[_-]?key["\']?\s*[:=]\s*["\']([^"\']+)["\']', #nosec B105 - This is a regex pattern, not an actual secret
-            "secret": r'(?i)secret["\']?\s*[:=]\s*["\']([^"\']+)["\']', #nosec B105
-            "password": r'(?i)password["\']?\s*[:=]\s*["\']([^"\']+)["\']', #nosec B105
-            "token": r'(?i)token["\']?\s*[:=]\s*["\']([^"\']+)["\']', #nosec B105
-            "aws_key": r'(?i)aws[_-]?(?:access[_-]?)?key["\']?\s*[:=]\s*["\']([^"\']+)["\']'
+        secret_patterns = {  # These are regex patterns, not an actual secret
+            "api_key": r'(?i)api[_-]?key["\']?\s*[:=]\s*["\']([^"\']+)["\']',  # nosec B105
+            "secret": r'(?i)secret["\']?\s*[:=]\s*["\']([^"\']+)["\']',  # nosec B105
+            "password": r'(?i)password["\']?\s*[:=]\s*["\']([^"\']+)["\']',  # nosec B105
+            "token": r'(?i)token["\']?\s*[:=]\s*["\']([^"\']+)["\']',  # nosec B105
+            "aws_key": r'(?i)aws[_-]?(?:access[_-]?)?key["\']?\s*[:=]\s*["\']([^"\']+)["\']',
         }
-        
+
         for secret_type, pattern in secret_patterns.items():
             matches = re.finditer(pattern, content)
             for match in matches:
                 secret_value = match.group(1)
                 if self._looks_like_secret(secret_value):
-                    analysis["secrets"].append({
-                        "type": secret_type,
-                        "value": self._mask_secret(secret_value),
-                        "line": content.count('\n', 0, match.start()) + 1
-                    })
-                    
+                    analysis["secrets"].append(
+                        {
+                            "type": secret_type,
+                            "value": self._mask_secret(secret_value),
+                            "line": content.count("\n", 0, match.start()) + 1,
+                        }
+                    )
+
     def _looks_like_secret(self, value: str) -> bool:
         """Check if a value looks like a secret."""
         # Ignore obviously non-secret values
-        non_secrets = ['null', 'undefined', '', '0', 'false', 'true']
+        non_secrets = ["null", "undefined", "", "0", "false", "true"]
         if value.lower() in non_secrets:
             return False
-            
+
         # Check for minimum entropy and length
         if len(value) < 8:
             return False
-            
+
         # Check for variety in characters
         char_types = set()
         for char in value:
             if char.isupper():
-                char_types.add('upper')
+                char_types.add("upper")
             elif char.islower():
-                char_types.add('lower')
+                char_types.add("lower")
             elif char.isdigit():
-                char_types.add('digit')
+                char_types.add("digit")
             else:
-                char_types.add('special')
-                
+                char_types.add("special")
+
         return len(char_types) >= 2
-        
+
     def _mask_secret(self, secret: str) -> str:
         """Mask a secret value for safe logging."""
         if len(secret) <= 8:
             return "*" * len(secret)
         return secret[:4] + "*" * (len(secret) - 8) + secret[-4:]
-        
+
     async def _check_js_vulnerabilities(self, content: str, analysis: Dict):
         """Check for common JavaScript vulnerabilities."""
         vulnerability_patterns = {
             "eval_usage": {
-                "pattern": r'\beval\s*\(',
+                "pattern": r"\beval\s*\(",
                 "risk": "high",
-                "description": "Use of eval() can lead to code injection"
+                "description": "Use of eval() can lead to code injection",
             },
             "innerHTML": {
-                "pattern": r'\.innerHTML\s*=',
+                "pattern": r"\.innerHTML\s*=",
                 "risk": "medium",
-                "description": "Direct innerHTML assignment can lead to XSS"
+                "description": "Direct innerHTML assignment can lead to XSS",
             },
             "document_write": {
-                "pattern": r'document\.write\s*\(',
+                "pattern": r"document\.write\s*\(",
                 "risk": "medium",
-                "description": "Use of document.write is dangerous"
+                "description": "Use of document.write is dangerous",
             },
             "sql_string": {
-                "pattern": r'SELECT\s+\w+\s+FROM',
+                "pattern": r"SELECT\s+\w+\s+FROM",
                 "risk": "high",
-                "description": "SQL query string found in JavaScript"
-            }
+                "description": "SQL query string found in JavaScript",
+            },
         }
-        
+
         for vuln_type, info in vulnerability_patterns.items():
             matches = re.finditer(info["pattern"], content)
             for match in matches:
-                analysis["vulnerabilities"].append({
-                    "type": vuln_type,
-                    "risk": info["risk"],
-                    "description": info["description"],
-                    "line": content.count('\n', 0, match.start()) + 1,
-                    "evidence": content[match.start():match.end()]
-                })
-                
+                analysis["vulnerabilities"].append(
+                    {
+                        "type": vuln_type,
+                        "risk": info["risk"],
+                        "description": info["description"],
+                        "line": content.count("\n", 0, match.start()) + 1,
+                        "evidence": content[
+                            match.start() : match.end()  # noqa
+                        ],  # # noqa: E203
+                    }
+                )
+
     async def _find_websockets(self, content: str, analysis: Dict):
         """Find WebSocket endpoints in JavaScript code."""
         websocket_patterns = [
             r'(?:"|\')?wss?://[^"\']+(?:"|\')?',  # WebSocket URLs
-            r'new\s+WebSocket\s*\([^)]+\)',  # WebSocket initialization
-            r'WebSocket\.connect\s*\([^)]+\)'  # Alternative initialization
+            r"new\s+WebSocket\s*\([^)]+\)",  # WebSocket initialization
+            r"WebSocket\.connect\s*\([^)]+\)",  # Alternative initialization
         ]
-        
+
         for pattern in websocket_patterns:
             matches = re.finditer(pattern, content)
             for match in matches:
-                ws_url = match.group(0).strip('\'"()')
+                ws_url = match.group(0).strip("'\"()")
                 if "WebSocket" in ws_url:
                     # Extract URL from WebSocket initialization
                     url_match = re.search(r'(?:"|\')([^"\']+)(?:"|\')', ws_url)
                     if url_match:
                         ws_url = url_match.group(1)
-                        
-                if ws_url not in [w["url"] for w in analysis["websockets"]]:
-                    analysis["websockets"].append({
-                        "url": ws_url,
-                        "type": "websocket",
-                        "protocol": "wss" if ws_url.startswith("wss") else "ws"
-                    })
 
+                if ws_url not in [w["url"] for w in analysis["websockets"]]:
+                    analysis["websockets"].append(
+                        {
+                            "url": ws_url,
+                            "type": "websocket",
+                            "protocol": "wss" if ws_url.startswith("wss") else "ws",
+                        }
+                    )

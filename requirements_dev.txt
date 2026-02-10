@@ -17,6 +17,7 @@ black
 isort
 mypy
 pylint
+types-pyYaml
 
 # Coverage reporting
 coverage[toml]

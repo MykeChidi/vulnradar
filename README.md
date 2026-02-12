@@ -96,6 +96,7 @@ python -m vulnradar --gui
 ```bash
 # Clone the repository
 git clone https://github.com/MykeChidi/vulnradar.git
+cd vulnradar
 
 # Create virtual environment
 python -m venv venv

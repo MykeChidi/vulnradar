@@ -19,6 +19,7 @@ Before you start, make sure you have:
 ```bash
 # Clone the repository
 git clone https://github.com/MykeChidi/vulnradar.git
+cd vulnradar
 
 # Create virtual environment
 python -m venv venv

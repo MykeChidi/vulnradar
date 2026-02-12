@@ -45,6 +45,7 @@ If pip is not installed, install it following the [pip installation guide](https
 **Using Git (Recommended):**
 ```bash
 git clone https://github.com/MykeChidi/vulnradar.git
+cd vulnradar
 ```
 
 ### 2. Create Virtual Environment

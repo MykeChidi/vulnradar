@@ -13,11 +13,13 @@ import OpenSSL
 from ..utils.cache import ScanCache
 from ..utils.error_handler import (
     NetworkError,
+    ValidationError,
     get_global_error_handler,
     handle_async_errors,
 )
 from ..utils.logger import setup_logger
 from ..utils.rate_limit import RateLimiter
+from ..utils.validator import Validator
 from ._target import ReconTarget
 
 error_handler = get_global_error_handler()
@@ -232,6 +234,25 @@ class NetworkInfrastructureAnalyzer:
             self.logger.error("No IP address available for port scanning")
             return {"error": "no_ip", "message": "Target IP address not resolved"}
 
+        # Validate port range safely
+        port_range_str = self.options.get("port_range", "1-1000")
+
+        try:
+            # Validate port range format
+            if port_range_str == "common":
+                port_range = (
+                    "21,22,23,25,53,80,110,143,443,445,3306,3389,5432,8080,8443"
+                )
+            else:
+                # Validate it's safe
+                ports = Validator.validate_port_range(port_range_str)
+                port_range = port_range_str  # Use validated string
+
+        except ValidationError as e:
+            self.logger.error(f"Invalid port range: {e}")
+            error_handler.handle_error(e)
+            return {"error": "invalid_port_range", "message": str(e)}
+
         capabilities = self._get_nmap_capabilities()
         port_results = {
             "scan_type": "privileged" if capabilities["syn_scan"] else "unprivileged",
@@ -264,7 +285,6 @@ class NetworkInfrastructureAnalyzer:
 
             # Convert args list to string
             args = " ".join(scan_args)
-            port_range = self.options.get("port_range", "1-1000")
 
             # Run the scan
             self.logger.info(

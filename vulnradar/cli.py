@@ -147,7 +147,9 @@ def parse_arguments():
         "--no-os-detection", action="store_true", help="Skip target OS detection"
     )
     net_recon_opt.add_argument(
-        "--port-range", default="1-1000", help="Range of ports to scan"
+        "--port-range",
+        default="1-1000",
+        help='Range of ports to scan,(Enter "common" to scan common ports)',
     )
     net_recon_opt.add_argument(
         "--no-script-scan", action="store_true", help="Skip nmap script scan"

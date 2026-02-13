@@ -1,14 +1,13 @@
 <div align="center">
   <img src="./assets/vulnradar.png" alt="Logo" width="200"/>
   <h1> VulnRadar </h1>
-  <h2> A Web Vulnerability Scanner </h2>
+  <h3> A Web Vulnerability Scanner </h3>
+  [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
+  [![License](https://img.shields.io/badge/License-AGPLv3-green)](LICENSE)
+  [![GitHub Issues](https://img.shields.io/github/issues/MykeChidi/vulnradar)](https://github.com/MykeChidi/vulnradar/issues)
+  [![security: bandit](https://img.shields.io/badge/security-bandit-yellow.svg)](https://github.com/PyCQA/bandit)
 </div>
 
-
-[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/License-AGPLv3-green)](LICENSE)
-[![GitHub Issues](https://img.shields.io/github/issues/MykeChidi/vulnradar)](https://github.com/MykeChidi/vulnradar/issues)
-[![security: bandit](https://img.shields.io/badge/security-bandit-yellow.svg)](https://github.com/PyCQA/bandit)
 
 A comprehensive, asynchronous web vulnerability scanner designed to identify common security flaws in web applications. VulnRadar combines intelligent web crawling, advanced reconnaissance, and targeted vulnerability testing with detailed reporting capabilities.
 

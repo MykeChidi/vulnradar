@@ -1,13 +1,11 @@
 # vulnradar/utils/validator.py - Input validation & sanitization
 
-import ipaddress
 import re
-import socket
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 from urllib.parse import urlparse
 
-from .error_handler import get_global_error_handler, handle_errors
+from .error_handler import ValidationError, get_global_error_handler, handle_errors
 
 error_handler = get_global_error_handler()
 
@@ -20,18 +18,8 @@ class Validator:
     SAFE_HEADER_VALUE = re.compile(r"^[a-zA-Z0-9\-._~:/?#\[\]@!$&\'()*+,;= ]+$")
     SAFE_COOKIE_PATTERN = re.compile(r"^[a-zA-Z0-9\-._~:/?#\[\]@!$&\'()*+,;=]+$")
     SAFE_CACHE_KEY = re.compile(r"^[a-zA-Z0-9_-]+$")
-
-    # Blocked networks for SSRF prevention
-    BLOCKED_NETWORKS = [
-        ipaddress.ip_network("127.0.0.0/8"),  # Loopback
-        ipaddress.ip_network("10.0.0.0/8"),  # Private
-        ipaddress.ip_network("172.16.0.0/12"),  # Private
-        ipaddress.ip_network("192.168.0.0/16"),  # Private
-        ipaddress.ip_network("169.254.0.0/16"),  # Link-local (AWS metadata)
-        ipaddress.ip_network("::1/128"),  # IPv6 loopback
-        ipaddress.ip_network("fc00::/7"),  # IPv6 private
-        ipaddress.ip_network("fe80::/10"),  # IPv6 link-local
-    ]
+    PORT_RANGE_PATTERN = re.compile(r"^[\d,\-]+$")
+    DEFAULT_MAX_PORTS = 65535
 
     @staticmethod
     @handle_errors(
@@ -63,67 +51,7 @@ class Validator:
         if not parsed.netloc:
             raise ValueError("URL must contain a hostname")
 
-        # Prevent SSRF to internal networks
-        if Validator._is_blocked_host(parsed.hostname):
-            raise ValueError(
-                "Cannot scan internal/private IP addresses or blocked hosts"
-            )
-
         return url
-
-    @staticmethod
-    def _is_blocked_host(hostname: Optional[str]) -> bool:
-        """Check if hostname resolves to blocked IP or is a blocked domain."""
-        if not hostname:
-            return True
-
-        # Check blocked domains
-        blocked_domains = [
-            "localhost",
-            "metadata.google.internal",
-            "metadata",
-            "metadata.azure.com" "127.0.0.1",
-            "0.0.0.0",
-            "169.254.169.254",  # nosec B104
-        ]
-
-        if hostname.lower() in blocked_domains:
-            return True
-
-        # Try to resolve and check IP
-        try:
-            # Get all resolved IPs
-            addr_info = socket.getaddrinfo(hostname, None)
-
-            for family, _, _, _, sockaddr in addr_info:
-                ip_str = sockaddr[0]
-
-                try:
-                    ip = ipaddress.ip_address(ip_str)
-
-                    # Check if IP is in any blocked network
-                    for network in Validator.BLOCKED_NETWORKS:
-                        if ip in network:
-                            return True
-
-                    # Additional checks
-                    if (
-                        ip.is_private
-                        or ip.is_loopback
-                        or ip.is_link_local
-                        or ip.is_reserved
-                        or ip.is_multicast
-                    ):
-                        return True
-
-                except ValueError:
-                    continue
-
-        except (socket.gaierror, socket.error):
-            # DNS resolution failed
-            pass
-
-        return False
 
     @staticmethod
     @handle_errors(
@@ -153,6 +81,60 @@ class Validator:
                 raise ValueError("Cookie contains invalid characters")
 
         return value
+
+    @staticmethod
+    def validate_port_range(
+        port_range: str, max_ports: int = DEFAULT_MAX_PORTS
+    ) -> List[int]:
+        """
+        Validate and parse port range.
+
+        Args:
+            port_range: Port range string (e.g., "80,443,1000-2000")
+            max_ports: Maximum number of ports allowed
+
+        Returns:
+            List of validated port numbers
+
+        Raises:
+            ValidationError: If port range is invalid
+        """
+        if not Validator.PORT_RANGE_PATTERN.match(port_range):
+            raise ValidationError(
+                f"Invalid port range format: {port_range}",
+                context={"port_range": port_range},
+            )
+
+        ports: List = []
+        for part in port_range.split(","):
+            part = part.strip()
+
+            if "-" in part:
+                start_str, end_str = part.split("-", 1)
+                start, end = int(start_str), int(end_str)
+
+                if not (1 <= start <= 65535 and 1 <= end <= 65535):
+                    raise ValidationError(f"Port out of range: {part}")
+
+                if start > end:
+                    raise ValidationError(f"Invalid range (start > end): {part}")
+
+                if end - start > max_ports:
+                    raise ValidationError(f"Range too large: {part}")
+
+                ports.extend(range(start, end + 1))
+            else:
+                port = int(part)
+                if not (1 <= port <= 65535):
+                    raise ValidationError(f"Port out of range: {port}")
+                ports.append(port)
+
+        ports = sorted(set(ports))
+
+        if len(ports) > max_ports:
+            raise ValidationError(f"Too many ports: {len(ports)} (max {max_ports})")
+
+        return ports
 
     @staticmethod
     @handle_errors(

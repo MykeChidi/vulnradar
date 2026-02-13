@@ -2,6 +2,7 @@
 
 import functools
 import re
+import sys
 import traceback
 from collections import defaultdict
 from enum import Enum
@@ -16,6 +17,11 @@ from .logger import setup_logger
 
 # Initialize logger
 logger = setup_logger("Error_logs")
+
+# Constants for configuration
+ERROR_DEDUP_WINDOW_SECONDS = 60
+ERROR_CLEANUP_WINDOW_SECONDS = 300
+MAX_SAFE_MESSAGE_LENGTH = 200
 
 
 class ErrorSeverity(Enum):
@@ -157,38 +163,70 @@ class ErrorHandler:
     user feedback, and secure error reporting.
     """
 
-    # Sensitive data patterns to redact from error messages
+    # ReDoS-safe sensitive data patterns
     SENSITIVE_PATTERNS = [
+        # Match passwords - limited to 200 chars to prevent ReDoS
         (
             re.compile(
-                r'(password["\']?\s*[:=]\s*["\'])([^"\']+)(["\'])', re.IGNORECASE
+                r'(password["\']?\s*[:=]\s*["\'])([^"\']{1,200})(["\'])', re.IGNORECASE
             ),
             r"\1[REDACTED]\3",
         ),
+        # API keys - limited length
         (
             re.compile(
-                r'(api[_-]?key["\']?\s*[:=]\s*["\'])([^"\']+)(["\'])', re.IGNORECASE
+                r'(api[_-]?key["\']?\s*[:=]\s*["\'])([^"\']{1,200})(["\'])',
+                re.IGNORECASE,
             ),
             r"\1[REDACTED]\3",
         ),
+        # Tokens - limited length
         (
-            re.compile(r'(token["\']?\s*[:=]\s*["\'])([^"\']+)(["\'])', re.IGNORECASE),
+            re.compile(
+                r'(token["\']?\s*[:=]\s*["\'])([^"\']{1,200})(["\'])', re.IGNORECASE
+            ),
             r"\1[REDACTED]\3",
         ),
+        # Secrets - limited length
         (
-            re.compile(r'(secret["\']?\s*[:=]\s*["\'])([^"\']+)(["\'])', re.IGNORECASE),
+            re.compile(
+                r'(secret["\']?\s*[:=]\s*["\'])([^"\']{1,200})(["\'])', re.IGNORECASE
+            ),
             r"\1[REDACTED]\3",
         ),
+        # Auth - limited length
         (
-            re.compile(r'(auth["\']?\s*[:=]\s*["\'])([^"\']+)(["\'])', re.IGNORECASE),
+            re.compile(
+                r'(auth["\']?\s*[:=]\s*["\'])([^"\']{1,200})(["\'])', re.IGNORECASE
+            ),
             r"\1[REDACTED]\3",
+        ),
+        # Add database connection strings
+        (
+            re.compile(
+                r"((?:mysql|postgresql|mongodb)://[^:]+:)([^@]{1,200})(@)",
+                re.IGNORECASE,
+            ),
+            r"\1[REDACTED]\3",
+        ),
+        # Add Bearer tokens
+        (
+            re.compile(r"(Bearer\s+)([A-Za-z0-9\-._~+/]{10,200})", re.IGNORECASE),
+            r"\1[REDACTED]",
         ),
     ]
 
-    # Path patterns
+    # Enhanced path patterns
     PATH_PATTERNS = [
+        # Unix home directories
         (re.compile(r"/home/[^/]+/"), "/home/[USER]/"),
-        (re.compile(r"C:\\Users\\[^\\]+\\"), r"C:\\Users\[USER]\\"),
+        # Windows user directories
+        (re.compile(r"C:\\Users\\[^\\]+\\"), r"C:\Users\[USER]\\"),
+        # Temporary directories
+        (re.compile(r"/tmp/[^/]+/"), "/tmp/[TEMP]/"), # nosec: B108
+        (re.compile(r"/var/tmp/[^/]+/"), "/var/tmp/[TEMP]/"), # nosec: B108
+        # Common project paths
+        (re.compile(r"/opt/[^/]+/"), "/opt/[APP]/"),
     ]
 
     def __init__(
@@ -203,19 +241,22 @@ class ErrorHandler:
         Args:
             debug_mode: If True, show detailed error information
             log_file: Optional file to log errors to
-            enable_rate_limiting: If True, prevent log spam from repeated errors
+            rate_limited: If True, prevent log spam from repeated errors
         """
         self.debug_mode = debug_mode
         self.log_file = log_file
         self.rate_limited = rate_limited
 
-        # Thread safe error counting
-        self.error_counts: Dict[ErrorCategory, int] = defaultdict(int)
+        # Thread-safe error counting with proper lock
+        self._error_counts: Dict[ErrorCategory, int] = defaultdict(int)
         self._counts_lock = Lock()
 
         # Rate limiting for repeated errors
         self._recent_errors: Dict[str, float] = {}
         self._rate_limit_lock = Lock()
+
+        # Check if output supports color
+        self._color_enabled = sys.stdout.isatty()
 
     def handle_error(
         self,
@@ -247,67 +288,53 @@ class ErrorHandler:
             severity, category = self._classify_error(error)
             message = str(error)
 
-        # Update error counts (thread-safe)
+        # Update error counts with proper locking
         with self._counts_lock:
-            self.error_counts[category] += 1
+            self._error_counts[category] += 1
+            current_count = self._error_counts[category]
 
-        # Sanitize error message
+        # Sanitize sensitive data from message
         safe_message = self._sanitize_message(message)
+        safe_context = self._sanitize_context(context)
 
-        # Log the error (with rate limiting if enabled)
-        if not self.rate_limited or self._should_log(error):
+        # Check if we should log (rate limiting)
+        should_log = not self.rate_limited or self._should_log(error)
+
+        if should_log:
             self._log_error(
-                error, severity, category, safe_message, context, log_traceback
+                error=error,
+                severity=severity,
+                category=category,
+                message=safe_message,
+                context=safe_context,
+                log_traceback=log_traceback,
             )
 
-        # Prepare error response
-        error_response = {
-            "error": True,
-            "message": user_message or self._get_user_message(category, safe_message),
+        # Generate user-friendly message
+        if user_message:
+            display_message = user_message
+        else:
+            display_message = self._generate_user_message(category, safe_message)
+
+        # Build error info dictionary
+        error_info = {
             "severity": severity.value,
             "category": category.value,
+            "message": safe_message,
+            "user_message": display_message,
+            "context": safe_context,
             "recoverable": self._is_recoverable(error),
+            "count": current_count,
         }
 
-        # Add debug info if in debug mode
         if self.debug_mode:
-            error_response["debug_info"] = {
-                "type": type(error).__name__,
-                "original_message": message,
-                "context": context,
-                "traceback": traceback.format_exc() if log_traceback else None,
-            }
+            error_info["traceback"] = traceback.format_exc()
 
-        return error_response
+        return error_info
 
     def _classify_error(self, error: Exception) -> tuple[ErrorSeverity, ErrorCategory]:
         """
-        Classify an error by severity and category, checking the entire exception chain.
-
-        Args:
-            error: The exception to classify
-
-        Returns:
-            Tuple of (severity, category)
-        """
-        # Check the entire exception chain
-        current: Optional[Exception] = error
-        while current is not None:
-            severity, category = self._classify_single_error(current)
-            if category != ErrorCategory.UNKNOWN:
-                return severity, category
-            current = getattr(current, "__cause__", None) or getattr(
-                current, "__context__", None
-            )
-
-        # Default if nothing in chain matches
-        return ErrorSeverity.MEDIUM, ErrorCategory.UNKNOWN
-
-    def _classify_single_error(
-        self, error: Exception
-    ) -> tuple[ErrorSeverity, ErrorCategory]:
-        """
-        Classify an error by severity and category.
+        Classify error based on type and message.
 
         Args:
             error: The exception to classify
@@ -319,27 +346,23 @@ class ErrorHandler:
         error_msg = str(error).lower()
 
         # Network errors
-        if any(x in error_type.lower() for x in ["connection", "timeout", "network"]):
+        if error_type in ["ConnectionError", "TimeoutError", "HTTPError"]:
             return ErrorSeverity.MEDIUM, ErrorCategory.NETWORK
 
         # Authentication errors
-        if any(x in error_msg for x in ["unauthorized", "forbidden", "authentication"]):
+        if "authentication" in error_msg or "unauthorized" in error_msg:
             return ErrorSeverity.HIGH, ErrorCategory.AUTHENTICATION
 
-        # Permission errors
-        if any(x in error_msg for x in ["permission", "access denied", "forbidden"]):
-            return ErrorSeverity.HIGH, ErrorCategory.PERMISSION
-
         # Validation errors
-        if any(x in error_type.lower() for x in ["validation", "value", "type"]):
+        if error_type == "ValueError" or "invalid" in error_msg:
             return ErrorSeverity.LOW, ErrorCategory.VALIDATION
 
-        # Resource errors
-        if any(x in error_msg for x in ["memory", "disk", "space", "resource"]):
-            return ErrorSeverity.HIGH, ErrorCategory.RESOURCE
+        # Permission errors
+        if "permission" in error_msg or "forbidden" in error_msg:
+            return ErrorSeverity.HIGH, ErrorCategory.PERMISSION
 
         # Timeout errors
-        if "timeout" in error_msg:
+        if "timeout" in error_msg or error_type == "TimeoutError":
             return ErrorSeverity.MEDIUM, ErrorCategory.TIMEOUT
 
         # Parse errors
@@ -355,7 +378,7 @@ class ErrorHandler:
 
     def _sanitize_message(self, message: str) -> str:
         """
-        Remove sensitive information from error messages.
+        FIX: Remove sensitive data from error messages with ReDoS protection.
 
         Args:
             message: Original error message
@@ -363,25 +386,56 @@ class ErrorHandler:
         Returns:
             Sanitized message
         """
+        # Limit message length to prevent ReDoS
+        if len(message) > 5000:
+            message = message[:5000] + "... [truncated]"
+
         sanitized = message
 
-        # Redact sensitive patterns
+        # Apply sensitive patterns with try-except for safety
         for pattern, replacement in self.SENSITIVE_PATTERNS:
-            sanitized = pattern.sub(replacement, sanitized)
+            try:
+                sanitized = pattern.sub(replacement, sanitized)
+            except Exception as e:
+                logger.warning(f"Failed to apply sanitization pattern: {e}")
+                # Continue with other patterns
 
-        # Redact file paths that might contain usernames
+        # Apply path patterns
         for pattern, replacement in self.PATH_PATTERNS:
-            sanitized = pattern.sub(replacement, sanitized)
+            try:
+                sanitized = pattern.sub(replacement, sanitized)
+            except Exception as e:
+                logger.warning(f"Failed to apply path pattern: {e}")
 
-        # Redact IP addresses in some contexts
-        if "internal" in sanitized.lower() or "private" in sanitized.lower():
-            sanitized = re.sub(
-                r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "[IP_REDACTED]", sanitized
-            )
+        # Remove newlines to prevent log injection
+        sanitized = sanitized.replace("\n", " ").replace("\r", " ")
+
+        # Remove ANSI codes to prevent terminal injection
+        ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+        sanitized = ansi_escape.sub("", sanitized)
 
         return sanitized
 
-    def _get_user_message(self, category: ErrorCategory, safe_message: str) -> str:
+    def _sanitize_context(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Sanitize context dictionary.
+
+        Args:
+            context: Original context
+
+        Returns:
+            Sanitized context
+        """
+        sanitized = {}
+        for key, value in context.items():
+            # Sanitize both key and value
+            safe_key = self._sanitize_message(str(key))
+            safe_value = self._sanitize_message(str(value))
+            sanitized[safe_key] = safe_value
+
+        return sanitized
+
+    def _generate_user_message(self, category: ErrorCategory, safe_message: str) -> str:
         """
         Generate a user-friendly error message.
 
@@ -392,7 +446,6 @@ class ErrorHandler:
         Returns:
             User-friendly message
         """
-        # Default messages for each category
         default_messages = {
             ErrorCategory.NETWORK: "Network connection error. Please check your connection and try again.",
             ErrorCategory.AUTHENTICATION: "Authentication failed. Please check your credentials.",
@@ -411,10 +464,10 @@ class ErrorHandler:
             category, default_messages[ErrorCategory.UNKNOWN]
         )
 
-        # If safe_message provides useful info, append it
+        # Append safe message if it's useful
         if (
             safe_message
-            and len(safe_message) < 200
+            and len(safe_message) < MAX_SAFE_MESSAGE_LENGTH
             and not any(
                 x in safe_message.lower()
                 for x in ["traceback", "exception", "error at"]
@@ -434,7 +487,6 @@ class ErrorHandler:
         Returns:
             True if error is recoverable
         """
-        # Network and timeout errors are usually recoverable
         recoverable_types = [
             "TimeoutError",
             "ConnectionError",
@@ -446,7 +498,6 @@ class ErrorHandler:
         if type(error).__name__ in recoverable_types:
             return True
 
-        # Check for specific error messages
         error_msg = str(error).lower()
         recoverable_messages = ["timeout", "temporary", "retry", "unavailable"]
 
@@ -462,18 +513,20 @@ class ErrorHandler:
         Returns:
             True if error should be logged
         """
-        error_hash = f"{type(error).__name__}:{str(error)[:50]}"
+        # Create better hash using first 100 chars
+        error_hash = f"{type(error).__name__}:{str(error)[:100]}"
         now = time()
 
         with self._rate_limit_lock:
             if error_hash in self._recent_errors:
-                if now - self._recent_errors[error_hash] < 60:  # Within 1 minute
+                last_time = self._recent_errors[error_hash]
+                if now - last_time < ERROR_DEDUP_WINDOW_SECONDS:
                     return False
 
             self._recent_errors[error_hash] = now
 
-            # Clean up old entries (older than 5 minutes)
-            cutoff = now - 300
+            # Clean up old entries
+            cutoff = now - ERROR_CLEANUP_WINDOW_SECONDS
             self._recent_errors = {
                 k: v for k, v in self._recent_errors.items() if v > cutoff
             }
@@ -505,21 +558,42 @@ class ErrorHandler:
         if context:
             log_msg += f" | Context: {context}"
 
-        # Choose logging level based on severity
-        if severity == ErrorSeverity.CRITICAL:
-            logger.critical(f"{Fore.RED} {log_msg} {Style.RESET_ALL}")
-        elif severity == ErrorSeverity.HIGH:
-            logger.error(f"{Fore.RED} {log_msg} {Style.RESET_ALL}")
-        elif severity == ErrorSeverity.MEDIUM:
-            logger.warning(f"{Fore.YELLOW} {log_msg} {Style.RESET_ALL}")
+        # Only use colors if terminal supports it
+        if self._color_enabled:
+            if severity == ErrorSeverity.CRITICAL:
+                logger.critical(f"{Fore.RED}{log_msg}{Style.RESET_ALL}")
+            elif severity == ErrorSeverity.HIGH:
+                logger.error(f"{Fore.RED}{log_msg}{Style.RESET_ALL}")
+            elif severity == ErrorSeverity.MEDIUM:
+                logger.warning(f"{Fore.YELLOW}{log_msg}{Style.RESET_ALL}")
+            else:
+                logger.info(f"{Fore.BLUE}{log_msg}{Style.RESET_ALL}")
         else:
-            logger.info(f"{Fore.BLUE} {log_msg} {Style.RESET_ALL}")
+            # Plain logging without colors
+            if severity == ErrorSeverity.CRITICAL:
+                logger.critical(log_msg)
+            elif severity == ErrorSeverity.HIGH:
+                logger.error(log_msg)
+            elif severity == ErrorSeverity.MEDIUM:
+                logger.warning(log_msg)
+            else:
+                logger.info(log_msg)
 
-        # Log traceback for high severity errors or in debug mode
+        # Log traceback for high severity or debug mode
         if log_traceback and (
             severity.value in ["high", "critical"] or self.debug_mode
         ):
-            logger.debug(f"Trace: {traceback.format_exc()}")
+            logger.debug(f"Traceback: {traceback.format_exc()}")
+
+    def get_error_counts(self) -> Dict[str, int]:
+        """
+        FIX: Get error counts thread-safely.
+
+        Returns:
+            Dictionary of error counts by category
+        """
+        with self._counts_lock:
+            return dict(self._error_counts)  # type: ignore
 
 
 class AsyncErrorHandler(ErrorHandler):
@@ -530,10 +604,22 @@ class AsyncErrorHandler(ErrorHandler):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Handle exceptions in async context manager."""
+        """
+        Handle exceptions in async context manager.
+
+        Only suppresses VulnRadarError, not system exceptions.
+        """
         if exc_val is not None:
+            # Don't suppress system exceptions
+            if isinstance(exc_val, (SystemExit, KeyboardInterrupt, GeneratorExit)):
+                return False
+
             self.handle_error(exc_val)
-            return True  # Suppress exception
+
+            # Only suppress VulnRadarError
+            if isinstance(exc_val, VulnRadarError):
+                return True
+
         return False
 
 
@@ -554,8 +640,9 @@ def handle_errors(
         return_on_error: Value to return if error occurs
         log_traceback: Whether to log traceback
     """
+    # Use global error handler if none provided
     if error_handler is None:
-        error_handler = ErrorHandler()
+        error_handler = get_global_error_handler()
 
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
@@ -565,7 +652,7 @@ def handle_errors(
             except Exception as e:
                 error_info = error_handler.handle_error(
                     e,
-                    context={},
+                    context={"function": func.__name__},
                     user_message=user_message,
                     log_traceback=log_traceback,
                 )
@@ -597,11 +684,9 @@ def handle_async_errors(
         return_on_error: Value to return if error occurs
         log_traceback: Whether to log traceback
     """
-    # Ensure we use an AsyncErrorHandler internally
+    # Use global error handler if none provided
     if error_handler is None:
-        error_handler = AsyncErrorHandler()
-    elif not isinstance(error_handler, AsyncErrorHandler):
-        error_handler = AsyncErrorHandler()
+        error_handler = get_global_error_handler()
 
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
@@ -611,7 +696,7 @@ def handle_async_errors(
             except Exception as e:
                 error_info = error_handler.handle_error(
                     e,
-                    context={},
+                    context={"function": func.__name__},
                     user_message=user_message,
                     log_traceback=log_traceback,
                 )
@@ -627,9 +712,23 @@ def handle_async_errors(
 
 
 # Global error handler instance
-_global_error_handler = ErrorHandler()
+_global_error_handler: Optional[ErrorHandler] = None
+_global_error_handler_lock = Lock()
 
 
 def get_global_error_handler() -> ErrorHandler:
-    """Get the global error handler instance."""
+    """
+    Get the global error handler instance with thread-safe initialization.
+
+    Returns:
+        Global ErrorHandler instance
+    """
+    global _global_error_handler
+
+    if _global_error_handler is None:
+        with _global_error_handler_lock:
+            # Double-check locking
+            if _global_error_handler is None:
+                _global_error_handler = ErrorHandler()
+
     return _global_error_handler

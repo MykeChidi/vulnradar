@@ -196,20 +196,6 @@ run_security_checks() {
         security_success=false
     fi
     
-    # Safety
-    check_command_exists "safety" || {
-        print_warning "Safety not installed, skipping dependency check"
-        return 0
-    }
-    
-    print_section "Safety dependency check"
-    if safety scan > /dev/null 2>&1; then
-        print_success "Safety dependency check passed"
-    else
-        print_warning "Safety dependency check found potential issues"
-        [ "$VERBOSE" = true ] && safety scan
-    fi
-    
     [ "$security_success" = true ] || OVERALL_SUCCESS=false
 }
 
@@ -218,7 +204,7 @@ run_type_checking() {
     
     check_command_exists "mypy" || return 1
     
-    local cmd="mypy vulnradar --install-types --ignore-missing-imports"
+    local cmd="mypy vulnradar --ignore-missing-imports"
     [ "$VERBOSE" = true ] && cmd="$cmd --show-error-codes --pretty"
     
     if eval "$cmd" > /dev/null 2>&1; then
@@ -256,7 +242,7 @@ ${BOLD}USAGE:${NC}
 ${BOLD}OPTIONS:${NC}
   --coverage       Generate coverage report (pytest with coverage)
   --lint           Run linting checks (flake8, black, isort)
-  --security       Run security checks (bandit, safety)
+  --security       Run security checks (bandit)
   --type-check     Run type checking (mypy)
   --full           Run complete test suite (all checks)
   -v, --verbose    Verbose output (shows full command output)

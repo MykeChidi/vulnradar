@@ -103,7 +103,7 @@ class ScanCache:
 
             self._lock = rwlock.RWLockFair()
         except ImportError:
-            self._lock = threading.RLock() # type: ignore
+            self._lock = threading.RLock()  # type: ignore
             self._is_rwlock = False
         else:
             self._is_rwlock = True
@@ -385,7 +385,7 @@ class ScanCache:
         if self._is_rwlock:
             lock = self._lock.gen_rlock()
         else:
-            lock = self._lock # type: ignore
+            lock = self._lock  # type: ignore
 
         # Check memory cache
         with lock:
@@ -442,9 +442,9 @@ class ScanCache:
                 if not entry.is_expired():
                     # Add to memory cache
                     if self._is_rwlock:
-                        lock = self._lock.gen_wlock() # type: ignore
+                        lock = self._lock.gen_wlock()  # type: ignore
                     else:
-                        lock = self._lock # type: ignore
+                        lock = self._lock  # type: ignore
 
                     with lock:
                         self._add_to_memory_cache(key, entry)
@@ -525,7 +525,7 @@ class ScanCache:
         if self._is_rwlock:
             lock = self._lock.gen_wlock()
         else:
-            lock = self._lock # type: ignore
+            lock = self._lock  # type: ignore
 
         with lock:
             self._add_to_memory_cache(key, entry)
@@ -562,7 +562,7 @@ class ScanCache:
             if temp_file.exists():
                 temp_file.unlink()
             else:
-                pass # Temp file already deleted
+                pass  # Temp file already deleted
             return False
 
     def invalidate(self, key: str) -> bool:
@@ -581,7 +581,7 @@ class ScanCache:
         if self._is_rwlock:
             lock = self._lock.gen_wlock()
         else:
-            lock = self._lock # type: ignore
+            lock = self._lock  # type: ignore
 
         with lock:
             if key in self.memory_cache:
@@ -610,7 +610,7 @@ class ScanCache:
         if self._is_rwlock:
             lock = self._lock.gen_wlock()
         else:
-            lock = self._lock # type: ignore
+            lock = self._lock  # type: ignore
 
         with lock:
             self.memory_cache.clear()

@@ -7,7 +7,6 @@ from urllib.parse import urlparse
 
 from ..utils.error_handler import ValidationError, get_global_error_handler
 from ..utils.logger import setup_logger
-from ..utils.validator import Validator
 
 # Initialize logger and error handler
 logger = setup_logger("recon", log_to_file=False)
@@ -97,25 +96,8 @@ class ReconTarget:
             )
             raise ValueError(error_msg)
 
-        if self.port < 1024:
-            logger.warning(
-                f"Using privileged port {self.port}. "
-                "Ensure you have appropriate permissions."
-            )
-
         # Comprehensive hostname validation
         self._validate_hostname(self.hostname)
-
-        # Check if hostname is blocked
-        try:
-            Validator.is_blocked_host(self.hostname)
-        except Exception as e:
-            error_msg = f"Invalid ip: {str(e)}"
-            error_handler.handle_error(
-                ValidationError(error_msg, original_error=e),
-                context={"validation_type": "invalid IP"},
-            )
-            raise ValueError(error_msg)
 
         logger.debug(
             f"Target validated successfully: {self._sanitize_url_for_log(self.url)}"

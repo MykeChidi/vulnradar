@@ -41,8 +41,8 @@ def setup_logger(
 
         # Add file handler if requested
         if log_to_file:
-            # Create scan_results directory
-            log_dir = Path(__file__).parent.parent.parent / "scan_results"
+            # Create logs directory
+            log_dir = Path(__file__).parent.parent.parent / "VulnRadar_logs"
             log_dir.mkdir(exist_ok=True)
 
             # Create timestamp for the current scan

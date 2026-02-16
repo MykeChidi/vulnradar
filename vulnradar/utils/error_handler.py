@@ -221,7 +221,7 @@ class ErrorHandler:
         # Unix home directories
         (re.compile(r"/home/[^/]+/"), "/home/[USER]/"),
         # Windows user directories
-        (re.compile(r"C:\\Users\\[^\\]+\\"), r"C:\Users\[USER]\\"),
+        (re.compile(r"C:\\Users\\[^\\]+\\"), r"C:\\Users\[USER]\\"),
         # Temporary directories
         (re.compile(r"/tmp/[^/]+/"), "/tmp/[TEMP]/"),  # nosec: B108
         (re.compile(r"/var/tmp/[^/]+/"), "/var/tmp/[TEMP]/"),  # nosec: B108

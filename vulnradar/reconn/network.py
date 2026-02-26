@@ -50,7 +50,7 @@ class NetworkInfrastructureAnalyzer:
         self._cache: Optional[ScanCache] = None
         # Initialize cache if no disabled
         if not options.get("no_cache", False):
-            cache_dir = Path(options.get("cache_dir", "cache")) / "network"
+            cache_dir = Path(options.get("cache_dir", "vulnradar_cache")) / "network"
             self._cache = ScanCache(
                 cache_dir, default_ttl=options.get("cache_ttl", 3600)
             )

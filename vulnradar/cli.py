@@ -260,7 +260,7 @@ def parse_arguments():
     # Cache options
     cache_opt = parser.add_argument_group("Cache Options", "Configure result caching")
     cache_opt.add_argument(
-        "--cache-dir", default="cache", help="Directory for caching results"
+        "--cache-dir", default="vulnradar_cache", help="Directory for caching results"
     )
     cache_opt.add_argument(
         "--cache-ttl", type=int, default=3600, help="Cache time-to-live in seconds"
@@ -373,7 +373,7 @@ def show_usage_examples():
                     --max-workers 8 \\
                     --use-db \\
                     --db-path ./scans.db \\
-                    --cache-dir ./cache \\
+                    --cache-dir ./scan_cache \\
                     --cache-ttl 7200 \\
                     --excel
 

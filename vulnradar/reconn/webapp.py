@@ -35,7 +35,7 @@ class WebApplicationAnalyzer:
         # Initialize cache
         self._cache: Optional[ScanCache]
         if not options.get("no_cache", False):
-            cache_dir = Path(options.get("cache_dir", "cache")) / "webapp"
+            cache_dir = Path(options.get("cache_dir", "vulnradar_cache")) / "webapp"
             self._cache = ScanCache(
                 cache_dir, default_ttl=options.get("cache_ttl", 3600)
             )

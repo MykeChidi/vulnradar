@@ -1,6 +1,6 @@
 __pycache__
 scan_results/
-cache/
+Vulnradar_cache/
 .venv/
 
 .pytest_cache/

@@ -929,7 +929,7 @@ class VulnRadarGUI:
         self.no_cache_var = tk.BooleanVar(value=False)
         self.clear_cache_var = tk.BooleanVar(value=False)
         self.cache_ttl_var = tk.StringVar(value=3600)
-        self.cache_dir_var = tk.StringVar(value="cache")
+        self.cache_dir_var = tk.StringVar(value="vulnradar_cache")
 
         tk.Label(
             cache_dir_frame,

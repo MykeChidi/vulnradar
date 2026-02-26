@@ -115,7 +115,7 @@ class VulnRadar:
         self.cache: Optional[ScanCache] = None
         # Initialize cache
         if not options.get("no_cache", False):
-            cache_dir = Path(options.get("cache_dir", "cache"))
+            cache_dir = Path(options.get("cache_dir", "vulnradar_cache"))
             self.cache = ScanCache(
                 cache_dir, default_ttl=options.get("cache_ttl", 3600)
             )

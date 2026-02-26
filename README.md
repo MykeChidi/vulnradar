@@ -195,7 +195,7 @@ Complete documentation for all use cases:
 | `--use-selenium` | Enable JavaScript rendering | Disabled |
 | `--port-scan` | Perform port scanning | Disabled |
 | `--use-db` | Store results in database | Disabled |
-| `--cache-dir` | Cache directory path | cache |
+| `--cache-dir` | Cache directory path | vulnradar_cache |
 
 ## License
 

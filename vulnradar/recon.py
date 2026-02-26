@@ -37,7 +37,7 @@ class ReconManager:
 
         # Handle cache options
         if not self.options.get("no_cache", False):
-            cache_dir = Path(self.options.get("cache_dir", "cache"))
+            cache_dir = Path(self.options.get("cache_dir", "vulnradar_cache"))
 
             # Clear cache if requested
             if self.options.get("clear_cache", False):

@@ -37,7 +37,7 @@ class SecurityInfrastructureAnalyzer:
         # Initialize cache
         self._cache: Optional[ScanCache]
         if not options.get("no_cache", False):
-            cache_dir = Path(options.get("cache_dir", "cache")) / "security"
+            cache_dir = Path(options.get("cache_dir", "vulnradar_cache")) / "security"
             self._cache = ScanCache(
                 cache_dir, default_ttl=options.get("cache_ttl", 3600)
             )

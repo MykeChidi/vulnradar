@@ -487,20 +487,27 @@ class VulnRadar:
     async def detect_technologies(self) -> None:
         """Detect technologies used by the target website."""
         tech_detector = TechDetector()
-        self.results["technologies"] = await tech_detector.detect(
+        detection_result = await tech_detector.detect(
             self.target_url, headers=self.headers
         )
 
-        # Handle DetectionResult object
-        tech_data = self.results["technologies"]
-        if hasattr(tech_data, "technologies"):
+        # Extract the technologies dict from DetectionResult object
+        if hasattr(detection_result, "technologies"):
+            # It's a DetectionResult dataclass
+            self.results["technologies"] = detection_result.technologies
             logger.info(
-                f"Technology detection completed: {', '.join(tech_data.technologies.keys())}"
+                f"Technology detection completed: {', '.join(detection_result.technologies.keys())}"
             )
-        elif isinstance(tech_data, dict):
+        elif isinstance(detection_result, dict):
+            # It's already a dict (backward compat)
+            self.results["technologies"] = detection_result
             logger.info(
-                f"Technology detection completed: {', '.join(tech_data.keys())}"
+                f"Technology detection completed: {', '.join(detection_result.keys())}"
             )
+        else:
+            # Fallback
+            self.results["technologies"] = {}
+            logger.warning(f"Unexpected detection result type: {type(detection_result)}")
 
     async def run_vulnerability_scans(self) -> None:
         """Run all selected vulnerability scans."""

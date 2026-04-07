@@ -1,10 +1,12 @@
 __pycache__
 scan_results/
 Vulnradar_cache/
+Vulnradar_logs/
 .venv/
 
 .pytest_cache/
 .benchmarks/
+test_cache/
 
 
 Makefile

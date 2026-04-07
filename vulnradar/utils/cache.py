@@ -517,8 +517,8 @@ class ScanCache:
         ttl = ttl if ttl is not None else self.default_ttl
         entry = CacheEntry(value, ttl)
 
-        # Don't cache if TTL is 0 (immediate expiry)
-        if ttl == 0:
+        # Don't cache if TTL is 0 or None (immediate expiry or no caching)
+        if ttl == 0 or ttl is None:
             return True  # Success but no caching
 
         # Add to memory cache

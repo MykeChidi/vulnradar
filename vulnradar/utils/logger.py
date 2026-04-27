@@ -1,6 +1,7 @@
 # vulnradar/utils/logger.py - Logging Scan Output
 
 import logging
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -58,7 +59,16 @@ def setup_logger(
                 # Create main scan log file
                 log_file = log_dir / f"scan_{timestamp}.log"
 
-            file_handler = logging.FileHandler(log_file)
+            # Secure log file: owner read/write only (F-04).
+            # Logs may contain cookies, headers, endpoints and partial payloads.
+            fd = os.open(
+                str(log_file),
+                os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+                0o600,
+            )
+            log_stream = os.fdopen(fd, "a", encoding="utf-8")
+
+            file_handler = logging.StreamHandler(log_stream)
             file_handler.setLevel(level)
 
             # File output without colors

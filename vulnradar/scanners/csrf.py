@@ -1,4 +1,4 @@
-# vulnradar/scanners/csrf.py - CSRF Scanner
+﻿# vulnradar/scanners/csrf.py - CSRF Scanner
 
 from ast import literal_eval
 from typing import Any, Dict, List, Optional
@@ -174,7 +174,7 @@ class CSRFScanner(BaseScanner):
                     async with session.post(
                         form["action"] or url, data=form_data, allow_redirects=False
                     ) as response:
-                        await response.text()
+                        await self._safe_read(response)
 
                         # Check if request was successful (indicates missing CSRF protection)
                         if response.status in [200, 201, 302, 303]:

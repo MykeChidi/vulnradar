@@ -317,12 +317,14 @@ class ErrorHandler:
             display_message = self._generate_user_message(category, safe_message)
 
         # Build error info dictionary
+        # NOTE: 'context' is intentionally omitted from the returned dict (F-09).
+        # Internal context is used only for logging and must not propagate to
+        # scan reports, where it could disclose scanner internals / endpoint paths.
         error_info = {
             "severity": severity.value,
             "category": category.value,
             "message": safe_message,
             "user_message": display_message,
-            "context": safe_context,
             "recoverable": self._is_recoverable(error),
             "count": current_count,
         }

@@ -1,4 +1,4 @@
-# vulnradar/scanners/file_inclusion.py - File Inclusion Scanner
+﻿# vulnradar/scanners/file_inclusion.py - File Inclusion Scanner
 
 import asyncio
 import re
@@ -172,7 +172,7 @@ class FileInclusionScanner(BaseScanner):
                     headers=self.headers, timeout=timeout_obj
                 ) as session:
                     async with session.get(test_url) as response:
-                        response_text = await response.text()
+                        response_text = await self._safe_read(response)
 
                         # Check for LFI indicators
                         if await self._detect_lfi(response_text, payload):
@@ -237,7 +237,7 @@ class FileInclusionScanner(BaseScanner):
                     headers=self.headers, timeout=timeout_obj
                 ) as session:
                     async with session.get(test_url) as response:
-                        response_text = await response.text()
+                        response_text = await self._safe_read(response)
 
                         # Check for RFI indicators
                         if await self._detect_rfi(response_text, payload):
@@ -296,12 +296,12 @@ class FileInclusionScanner(BaseScanner):
                         async with session.post(
                             form["action"], data=form_data
                         ) as response:
-                            response_text = await response.text()
+                            response_text = await self._safe_read(response)
                     else:
                         async with session.get(
                             form["action"], params=form_data
                         ) as response:
-                            response_text = await response.text()
+                            response_text = await self._safe_read(response)
 
                     # Check for LFI indicators
                     if await self._detect_lfi(response_text, payload):
@@ -358,12 +358,12 @@ class FileInclusionScanner(BaseScanner):
                         async with session.post(
                             form["action"], data=form_data
                         ) as response:
-                            response_text = await response.text()
+                            response_text = await self._safe_read(response)
                     else:
                         async with session.get(
                             form["action"], params=form_data
                         ) as response:
-                            response_text = await response.text()
+                            response_text = await self._safe_read(response)
 
                     # Check for RFI indicators
                     if await self._detect_rfi(response_text, payload):
@@ -505,7 +505,7 @@ class FileInclusionScanner(BaseScanner):
                 headers=self.headers, timeout=timeout_obj
             ) as session:
                 async with session.get(url) as response:
-                    response_text = await response.text()
+                    response_text = await self._safe_read(response)
 
                     # Check if we still get the same indicators
                     if "etc/passwd" in payload:

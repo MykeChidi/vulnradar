@@ -8,9 +8,27 @@ from colorama import Fore, Style
 from .core import VulnRadar
 from .multi_target import MultiTargetScanner
 from .utils.error_handler import get_global_error_handler, handle_errors
+from .utils.validator import Validator
 
 # Setup error handler
 error_handler = get_global_error_handler()
+
+
+def _bounded_int(min_val: int, max_val: int):
+    """Return an argparse ``type`` function that validates integer bounds."""
+
+    def _check(value: str) -> int:
+        try:
+            ivalue = int(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"Expected an integer, got: {value!r}")
+        if not (min_val <= ivalue <= max_val):
+            raise argparse.ArgumentTypeError(
+                f"Value must be between {min_val} and {max_val}, got {ivalue}"
+            )
+        return ivalue
+
+    return _check
 
 
 def parse_arguments():
@@ -35,13 +53,22 @@ def parse_arguments():
         "Scan Options", "Configure scan behaviour and performance"
     )
     scan_opt.add_argument(
-        "--crawl-depth", type=int, default=3, help="Maximum crawl depth"
+        "--crawl-depth",
+        type=_bounded_int(1, 10),
+        default=3,
+        help="Maximum crawl depth (1-10)",
     )
     scan_opt.add_argument(
-        "--timeout", type=int, default=10, help="Request timeout in seconds"
+        "--timeout",
+        type=_bounded_int(1, 300),
+        default=10,
+        help="Request timeout in seconds (1-300)",
     )
     scan_opt.add_argument(
-        "--max-workers", type=int, default=5, help="Maximum concurrent workers"
+        "--max-workers",
+        type=_bounded_int(1, 50),
+        default=5,
+        help="Maximum concurrent workers (1-50)",
     )
     scan_opt.add_argument(
         "--use-selenium",
@@ -50,9 +77,9 @@ def parse_arguments():
     )
     scan_opt.add_argument(
         "--max-crawl-pages",
-        type=int,
+        type=_bounded_int(1, 50000),
         default=1000,
-        help="Maximum number of pages to crawl",
+        help="Maximum number of pages to crawl (1-50000)",
     )
     scan_opt.add_argument(
         "--port-scan", action="store_true", help="Perform port scanning"
@@ -263,7 +290,10 @@ def parse_arguments():
         "--cache-dir", default="vulnradar_cache", help="Directory for caching results"
     )
     cache_opt.add_argument(
-        "--cache-ttl", type=int, default=3600, help="Cache time-to-live in seconds"
+        "--cache-ttl",
+        type=_bounded_int(0, 86400),
+        default=3600,
+        help="Cache time-to-live in seconds (0-86400)",
     )
     cache_opt.add_argument(
         "--no-cache", action="store_true", help="Disable result caching"
@@ -286,7 +316,10 @@ def parse_arguments():
         help="Scan multiple targets using configuration file",
     )
     multi_opt.add_argument(
-        "--max-concurrent", type=int, default=3, help="Max concurrent target scans"
+        "--max-concurrent",
+        type=_bounded_int(1, 20),
+        default=3,
+        help="Max concurrent target scans (1-20)",
     )
     multi_opt.add_argument(
         "--sequential",
@@ -510,8 +543,16 @@ def run_multi_target_scan(args, options) -> int:
         # Generate and display summary
         scanner.print_summary()
 
-        # Save detailed reports
-        output_dir = Path(args.output_dir)
+        # Sanitize output directory path before writing reports
+        output_dir = Validator.sanitize_file_path(args.output_dir)
+        if output_dir is None:
+            print(
+                f"{Fore.RED}Error: Invalid output directory path: {args.output_dir}{Style.RESET_ALL}",
+                file=sys.stderr,
+            )
+            return 1
+        output_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
+
         scanner.save_summary(output_dir / "multi_target_summary.json")
         scanner.save_detailed_results(output_dir / "multi_target_results")
 

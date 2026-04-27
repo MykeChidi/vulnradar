@@ -186,12 +186,16 @@ class ScanCache:
         else:
             # Generate new salt
             salt = secrets.token_bytes(32)
-            # Write with secure permissions
-            fd = os.open(salt_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            # Write with secure permissions, isolated from process umask (F-08)
+            old_umask = os.umask(0o177)  # ensures at most 0o600
             try:
-                os.write(fd, salt)
+                fd = os.open(salt_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                try:
+                    os.write(fd, salt)
+                finally:
+                    os.close(fd)
             finally:
-                os.close(fd)
+                os.umask(old_umask)
 
         # Derive encryption key using PBKDF2
         kdf_encryption = PBKDF2HMAC(
@@ -544,13 +548,17 @@ class ScanCache:
         temp_file = cache_file.with_suffix(f".tmp.{os.getpid()}")  # PID for uniqueness
 
         try:
-            # Write with secure permissions atomically
-            fd = os.open(temp_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            # Write with secure permissions, isolated from process umask (F-08)
+            old_umask = os.umask(0o177)  # ensures at most 0o600
             try:
-                os.write(fd, serialized)
-                os.fsync(fd)  # Force write to disk
+                fd = os.open(temp_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                try:
+                    os.write(fd, serialized)
+                    os.fsync(fd)  # Force write to disk
+                finally:
+                    os.close(fd)
             finally:
-                os.close(fd)
+                os.umask(old_umask)
 
             # Atomic rename
             temp_file.replace(cache_file)

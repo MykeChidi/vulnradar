@@ -10,6 +10,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 
 from .error_handler import ResourceError, get_global_error_handler, handle_errors
+from .validator import Validator
 
 error_handler = get_global_error_handler()
 
@@ -75,7 +76,8 @@ class ReportGenerator:
             technologies=report.technologies,
             is_recon_only=report.is_recon_only,
         )
-        path = self.output_dir / f"{report.target.replace('://', '_')}.html"
+        safe_name = Validator.sanitize_filename(report.target)
+        path = self.output_dir / f"{safe_name}.html"
         try:
             with open(path, "w", encoding="utf-8") as f:
                 f.write(html)
@@ -96,7 +98,8 @@ class ReportGenerator:
     )
     def generate_pdf_report(self, report: Report) -> str:
         """Generate PDF report, handling recon-only and vulnerability scan data."""
-        path = self.output_dir / f"{report.target.replace('://', '_')}.pdf"
+        safe_name = Validator.sanitize_filename(report.target)
+        path = self.output_dir / f"{safe_name}.pdf"
         doc = SimpleDocTemplate(str(path), pagesize=letter)
 
         if report.is_recon_only:
@@ -150,7 +153,8 @@ class ReportGenerator:
                 "technologies": report.technologies,
             }
 
-        path = self.output_dir / f"{report.target.replace('://', '_')}.json"
+        safe_name = Validator.sanitize_filename(report.target)
+        path = self.output_dir / f"{safe_name}.json"
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(obj, f, indent=2)
@@ -189,7 +193,8 @@ class ReportGenerator:
             # For vulnerability scans, use vulnerability data
             df = pd.DataFrame(report.vulnerabilities)
 
-        path = self.output_dir / f"{report.target.replace('://', '_')}.xlsx"
+        safe_name = Validator.sanitize_filename(report.target)
+        path = self.output_dir / f"{safe_name}.xlsx"
         try:
             df.to_excel(path, index=False)
         except Exception as e:

@@ -14,8 +14,12 @@ from tqdm import tqdm
 
 from .core import VulnRadar
 from .utils.logger import setup_logger
+from .utils.validator import Validator
 
 logger = setup_logger("multi_target")
+
+# Maximum allowed YAML config file size (prevents YAML-bomb DoS — F-02)
+YAML_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 @dataclass
@@ -46,11 +50,11 @@ class TargetConfig:
             raise ValueError(f"Retries must be >= 0, got: {self.retries}")
 
     def _validate_url(self) -> bool:
-        """Validate URL format."""
+        """Validate URL format — only http/https schemes are accepted (F-11)."""
         try:
             result = urlparse(self.url)
-            # URL must have scheme and netloc
-            return bool(result.scheme and result.netloc)
+            # Whitelist only http/https — blocks file://, ftp://, javascript://, etc.
+            return result.scheme in ("http", "https") and bool(result.netloc)
         except Exception:
             return False
 
@@ -181,8 +185,14 @@ class MultiTargetScanner:
             logger.warning(f"Skipping invalid target: {e}")
 
     def _load_yaml(self) -> Any:
-        """Load and parse YAML file."""
+        """Load and parse YAML file with a size cap to prevent YAML bomb DoS (F-02)."""
         try:
+            file_size = self.config_file.stat().st_size
+            if file_size > YAML_MAX_BYTES:
+                raise ValueError(
+                    f"Configuration file too large: {file_size:,} bytes "
+                    f"(maximum allowed: {YAML_MAX_BYTES:,} bytes)"
+                )
             with open(self.config_file, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
                 return data if data is not None else {}
@@ -466,14 +476,21 @@ class MultiTargetScanner:
 
     def save_detailed_results(self, output_dir: Path) -> None:
         """Save individual results to separate JSON files."""
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        # Sanitize and restrict the output path (F-05)
+        sanitized = Validator.sanitize_file_path(str(output_dir))
+        if sanitized is None:
+            logger.error(f"Invalid output directory path: {output_dir}")
+            return
+        sanitized.mkdir(parents=True, exist_ok=True, mode=0o755)
 
         for result in self.results:
-            filename = (
-                f"{result.get('target_name', 'unknown').replace('/', '_')}_result.json"
-            )
-            filepath = output_dir / filename
+            raw_name = result.get("target_name", "unknown")
+            # Sanitize: strip all non-alphanumeric characters except hyphen/underscore
+            import re as _re
+
+            safe_name = _re.sub(r"[^\w\-]", "_", str(raw_name))[:100]
+            filename = f"{safe_name}_result.json"
+            filepath = sanitized / filename
 
             try:
                 with open(filepath, "w", encoding="utf-8") as f:
@@ -483,7 +500,7 @@ class MultiTargetScanner:
                     f"Failed to save result for {result.get('target_name')}: {e}"
                 )
 
-        logger.info(f"Results saved to: {output_dir}")
+        logger.info(f"Results saved to: {sanitized}")
 
     @staticmethod
     def generate_config_template(format: str = "yaml") -> str:

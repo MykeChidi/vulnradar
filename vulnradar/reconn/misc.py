@@ -1,4 +1,4 @@
-# vulnradar/reconn/misc.py - Miscellaneous analysis techniques
+﻿# vulnradar/reconn/misc.py - Miscellaneous analysis techniques
 import asyncio
 import re
 from pathlib import Path
@@ -12,6 +12,7 @@ from ..utils.error_handler import (
     get_global_error_handler,
     handle_async_errors,
 )
+from ..utils.http_utils import safe_read_response
 from ..utils.logger import setup_logger
 from ..utils.rate_limit import RateLimiter
 from ._target import ReconTarget
@@ -94,7 +95,7 @@ class MiscellaneousAnalyzer:
                         await self.rate_limiter.acquire()
                         async with session.get(url) as response:
                             await self.rate_limiter.report_success()
-                            content = await response.text()
+                            content = await safe_read_response(response)
                             error_results["error_pages"][error_type] = (
                                 await self._analyze_error_page(content, response.status)
                             )
@@ -421,7 +422,7 @@ class MiscellaneousAnalyzer:
                         async with session.get(url) as response:
                             await self.rate_limiter.report_success()
                             if response.status == 200:
-                                content = await response.text()
+                                content = await safe_read_response(response)
                                 for pattern in debug_indicators["error_detail"]:
                                     if re.search(pattern, content, re.I):
                                         debug_info["debug_mode"] = True
@@ -439,7 +440,7 @@ class MiscellaneousAnalyzer:
                     try:
                         async with session.get(url) as response:
                             if response.status == 200:
-                                content = await response.text()
+                                content = await safe_read_response(response)
                                 if any(
                                     re.search(pattern, content, re.I)
                                     for pattern in debug_indicators["error_detail"]

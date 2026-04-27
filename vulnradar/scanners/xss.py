@@ -1,4 +1,4 @@
-# vulnradar/scanners/xss.py - Cross-Site Scripting Scanner
+﻿# vulnradar/scanners/xss.py - Cross-Site Scripting Scanner
 
 import html
 import re
@@ -113,7 +113,7 @@ class XSSScanner(BaseScanner):
                         headers=self.headers, timeout=timeout
                     ) as session:
                         async with session.get(test_url) as response:
-                            response_text = await response.text()
+                            response_text = await self._safe_read(response)
 
                             # Check if the payload is reflected in the response
                             if self._check_for_xss_reflection(response_text, payload):
@@ -194,7 +194,7 @@ class XSSScanner(BaseScanner):
                             async with session.post(
                                 action_url, data=form_data
                             ) as response:
-                                response_text = await response.text()
+                                response_text = await self._safe_read(response)
 
                                 # Check if the payload is reflected in the response
                                 if self._check_for_xss_reflection(
@@ -224,7 +224,7 @@ class XSSScanner(BaseScanner):
                             async with session.get(
                                 action_url, params=form_data
                             ) as response:
-                                response_text = await response.text()
+                                response_text = await self._safe_read(response)
 
                                 # Check if the payload is reflected in the response
                                 if self._check_for_xss_reflection(
@@ -472,7 +472,7 @@ class XSSScanner(BaseScanner):
                     headers=self.headers, timeout=timeout
                 ) as session:
                     async with session.get(test_url) as response:
-                        response_text = await response.text()
+                        response_text = await self._safe_read(response)
 
                         # Check for DOM XSS indicators
                         if self._check_dom_xss_indicators(response_text, payload):
@@ -633,7 +633,7 @@ class XSSScanner(BaseScanner):
                     headers=self.headers, timeout=timeout
                 ) as session:
                     async with session.get(test_url) as response:
-                        response_text = await response.text()
+                        response_text = await self._safe_read(response)
 
                         if self._check_for_xss_reflection(response_text, payload):
                             return True
@@ -666,7 +666,7 @@ class XSSScanner(BaseScanner):
                             if not isinstance(action, str):
                                 action = str(action)
                             async with session.post(action, data=form_data) as response:
-                                response_text = await response.text()
+                                response_text = await self._safe_read(response)
                                 if self._check_for_xss_reflection(
                                     response_text, payload
                                 ):

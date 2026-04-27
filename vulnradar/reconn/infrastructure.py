@@ -1,4 +1,4 @@
-# vulnradar/reconn/infrastructure.py - Infrastructure relationship mapping for vulnerability scans.
+﻿# vulnradar/reconn/infrastructure.py - Infrastructure relationship mapping for vulnerability scans.
 import asyncio
 import json
 import re
@@ -18,6 +18,7 @@ from ..utils.error_handler import (
     get_global_error_handler,
     handle_async_errors,
 )
+from ..utils.http_utils import safe_read_response
 from ..utils.logger import setup_logger
 from ..utils.rate_limit import RateLimiter
 from ._target import ReconTarget
@@ -931,7 +932,7 @@ class InfrastructureRelationshipMapper:
                 try:
                     async with session.get(self.target.url) as response:
                         await self.rate_limiter.report_success()
-                        html = await response.text()
+                        html = await safe_read_response(response)
 
                         # Analyze script tags
                         try:
@@ -1229,7 +1230,7 @@ class InfrastructureRelationshipMapper:
                 try:
                     async with session.get(self.target.url) as response:
                         await self.rate_limiter.report_success()
-                        html = await response.text()
+                        html = await safe_read_response(response)
                         try:
                             soup = BeautifulSoup(html, "lxml")
                         except Exception:

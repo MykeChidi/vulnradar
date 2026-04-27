@@ -1131,7 +1131,7 @@ class VulnRadarGUI:
             "scan_path_traversal": self.vuln_vars["path"].get(),
             "scan_file_inclusion": self.vuln_vars["file"].get(),
             "scan_command_injection": self.vuln_vars["cmd"].get(),
-            "advanced_recon_only": self.advanced_recon_only_var.get(),
+            "recon_only": self.advanced_recon_only_var.get(),
             "recon_all": self.recon_all_var.get(),
             "recon_network": self.recon_module_vars["recon_network"].get(),
             "recon_security": self.recon_module_vars["recon_security"].get(),

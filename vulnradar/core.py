@@ -3,7 +3,6 @@
 
 import asyncio
 import time
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Type
 
 import aiohttp
@@ -99,7 +98,15 @@ class VulnRadar:
         self.db: Optional[VulnradarDatabase] = None
         # Database connection
         if options.get("use_db", False):
-            self.db = VulnradarDatabase(options.get("db_path", "vulnradar.db"))
+            raw_db_path = options.get("db_path", "vulnradar.db")
+            sanitized_db_path = Validator.sanitize_file_path(raw_db_path)
+            if sanitized_db_path is None:
+                error_handler.handle_error(
+                    ValidationError(f"Invalid database path: {raw_db_path}"),
+                    context={"db_path": raw_db_path},
+                )
+                raise ValueError(f"Invalid database path: {raw_db_path}")
+            self.db = VulnradarDatabase(str(sanitized_db_path))
         else:
             self.db = None
 
@@ -115,7 +122,14 @@ class VulnRadar:
         self.cache: Optional[ScanCache] = None
         # Initialize cache
         if not options.get("no_cache", False):
-            cache_dir = Path(options.get("cache_dir", "vulnradar_cache"))
+            raw_cache_dir = options.get("cache_dir", "vulnradar_cache")
+            cache_dir = Validator.sanitize_file_path(raw_cache_dir)
+            if cache_dir is None:
+                logger.warning(
+                    f"{Fore.YELLOW}Invalid cache directory path '{raw_cache_dir}', "
+                    f"falling back to default.{Style.RESET_ALL}"
+                )
+                cache_dir = Validator.sanitize_file_path("vulnradar_cache")
             self.cache = ScanCache(
                 cache_dir, default_ttl=options.get("cache_ttl", 3600)
             )
@@ -223,9 +237,9 @@ class VulnRadar:
         Returns:
             bool: True if target is valid, False otherwise
         """
-        # Vaidate accessibility
-        connector = aiohttp.TCPConnector(limit=1)
+        # Validate accessibility
         timeout = aiohttp.ClientTimeout(total=10, connect=5)
+        connector = aiohttp.TCPConnector(limit=1)
         try:
             async with aiohttp.ClientSession(
                 connector=connector, timeout=timeout
@@ -402,10 +416,24 @@ class VulnRadar:
         if self.options.get("port_scan", False):
             logger.info("Starting port scan...")
             nm = PortScanner()
+            if not dns_results.get("A"):
+                logger.warning("No A records found, skipping port scan")
+                return
             ip = dns_results["A"][0]  # Use the first IP from DNS results
 
-            # Scan top 1000 ports
-            nm.scan(ip, "1-1000", arguments="-T4 -A")
+            # Validate and use configured port range (F-03: prevents nmap arg injection)
+            port_range_raw = self.options.get("port_range", "1-1000")
+            try:
+                Validator.validate_port_range(port_range_raw)
+                safe_port_range = port_range_raw
+            except Exception:
+                logger.warning(
+                    f"Invalid port range '{port_range_raw}', defaulting to 1-1000"
+                )
+                safe_port_range = "1-1000"
+
+            # Scan configured port range
+            nm.scan(ip, safe_port_range, arguments="-T4 -A")
 
             port_results = {}
             for proto in nm[ip].all_protocols():
@@ -507,7 +535,9 @@ class VulnRadar:
         else:
             # Fallback
             self.results["technologies"] = {}
-            logger.warning(f"Unexpected detection result type: {type(detection_result)}")
+            logger.warning(
+                f"Unexpected detection result type: {type(detection_result)}"
+            )
 
     async def run_vulnerability_scans(self) -> None:
         """Run all selected vulnerability scans."""
@@ -726,7 +756,16 @@ class VulnRadar:
             *[worker(task) for task in tasks], return_exceptions=True
         )
 
-        # Filter out exceptions
+        # Log exceptions for debugging, then filter them out
+        for r in results:
+            if isinstance(r, Exception):
+                error_handler.handle_error(
+                    ScanError(
+                        f"Concurrent task failed: {str(r)}",
+                        original_error=r,
+                    ),
+                    context={},
+                )
         return [r for r in results if not isinstance(r, Exception)]
 
     def generate_reports(self) -> None:

@@ -15,6 +15,7 @@ from .utils.error_handler import (
     ScanTimeoutError,
     get_global_error_handler,
 )
+from .utils.http_utils import safe_read_response
 
 # Setup error handler
 error_handler = get_global_error_handler()
@@ -165,7 +166,7 @@ class TechDetector:
                 resp_headers = dict(response.headers)
 
                 # Read content with size limit
-                html_content = await response.text()
+                html_content = await safe_read_response(response)
                 if len(html_content) > self.max_content_size:
                     html_content = html_content[: self.max_content_size]
                     errors.append("Content truncated due to size")

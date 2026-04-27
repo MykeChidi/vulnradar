@@ -1,4 +1,4 @@
-# vulnradar/reconn/security.py - Security Infrastructure Analysis Module
+﻿# vulnradar/reconn/security.py - Security Infrastructure Analysis Module
 import asyncio
 import re
 import socket
@@ -15,6 +15,7 @@ from ..utils.error_handler import (
     get_global_error_handler,
     handle_async_errors,
 )
+from ..utils.http_utils import safe_read_response
 from ..utils.logger import setup_logger
 from ..utils.rate_limit import RateLimiter
 from ._target import ReconTarget
@@ -206,7 +207,7 @@ class SecurityInfrastructureAnalyzer:
                                 )
 
                             # Check response body for WAF block pages
-                            body = await response.text()
+                            body = await safe_read_response(response)
                             if any(
                                 sig in body.lower()
                                 for sig in [

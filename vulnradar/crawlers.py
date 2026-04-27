@@ -18,6 +18,7 @@ from .utils.error_handler import (
     ScanError,
     get_global_error_handler,
 )
+from .utils.http_utils import safe_read_response
 from .utils.logger import setup_logger
 
 logger = setup_logger("WebCrawler")
@@ -183,7 +184,7 @@ class WebCrawler:
                             async with session.get(url) as response:
                                 status_code = response.status
                                 if self._is_html_response(response):
-                                    html_content = await response.text()
+                                    html_content = await safe_read_response(response)
 
                         # Yield the discovered URL and status code
                         yield url, status_code
@@ -342,7 +343,8 @@ class WebCrawler:
             ".ico",
             ".zip",
             ".tar",
-            ".gz" ".mp4",
+            ".gz",
+            ".mp4",
             ".mp3",
             ".wav",
             ".avi",

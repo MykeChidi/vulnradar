@@ -16,10 +16,21 @@ class Validator:
     # Whitelist patterns for various input types
     SAFE_URL_PATTERN = re.compile(r"^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&\'()*+,;=%]+$")
     SAFE_HEADER_VALUE = re.compile(r"^[a-zA-Z0-9\-._~:/?#\[\]@!$&\'()*+,;= ]+$")
-    SAFE_COOKIE_PATTERN = re.compile(r"^[a-zA-Z0-9\-._~:/?#\[\]@!$&\'()*+,;=]+$")
+    # RFC 6265 §4.1.1 cookie-octet: printable ASCII excluding whitespace,
+    # DQUOTE (0x22), comma (0x2C), semicolon (0x3B), and backslash (0x5C).
+    # Supports "name=value; name2=value2" format.
+    SAFE_COOKIE_PATTERN = re.compile(
+        r"^[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]+"
+        r"(?:=[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*)?"
+        r"(?:;\s*[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]+"
+        r"(?:=[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*)?)*$"
+    )
     SAFE_CACHE_KEY = re.compile(r"^[a-zA-Z0-9_-]+$")
     PORT_RANGE_PATTERN = re.compile(r"^[\d,\-]+$")
     DEFAULT_MAX_PORTS = 65535
+    # Practical URL length limit — matches browser/server conventions (F-07).
+    # RFC 3986 has no hard limit; 255 was too restrictive for deep query strings.
+    MAX_URL_LENGTH = 2048
 
     @staticmethod
     @handle_errors(
@@ -32,8 +43,10 @@ class Validator:
         if not url or not isinstance(url, str):
             raise ValueError("URL must be a non-empty string")
 
-        if len(url) > 255:
-            raise ValueError("URL exceeds maximum length of characters")
+        if len(url) > Validator.MAX_URL_LENGTH:
+            raise ValueError(
+                f"URL exceeds maximum length of {Validator.MAX_URL_LENGTH} characters"
+            )
 
         # Check against whitelist pattern
         if not Validator.SAFE_URL_PATTERN.match(url):

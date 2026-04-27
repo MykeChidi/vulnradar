@@ -7,8 +7,14 @@ Vulnradar_logs/
 .pytest_cache/
 .benchmarks/
 test_cache/
-
+htmlcov/
 
 Makefile
 .coverage
 tests_runner.py
+
+# Security-sensitive files
+*.db
+.salt
+.env
+.env.*

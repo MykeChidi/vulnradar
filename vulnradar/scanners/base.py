@@ -8,6 +8,10 @@ from bs4 import BeautifulSoup
 
 from ..utils.error_handler import ParseError, ValidationError, get_global_error_handler
 
+# Hard cap on response body size to prevent memory exhaustion when scanning
+# a malicious target that returns an unbounded stream (F-01).
+MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MB
+
 # Setup error handler
 error_handler = get_global_error_handler()
 
@@ -57,6 +61,20 @@ class BaseScanner(abc.ABC):
         """
         pass
 
+    @staticmethod
+    async def _safe_read(
+        response: aiohttp.ClientResponse,
+        limit: int = MAX_RESPONSE_BYTES,
+    ) -> str:
+        """
+        Read at most ``limit`` bytes from a response and return decoded text.
+
+        Using ``response.text()`` directly is unsafe against a malicious target
+        that streams a very large body — this method caps the read.
+        """
+        body = await response.content.read(limit)
+        return body.decode(errors="replace")
+
     async def _get_form_inputs(self, url: str) -> List[Dict]:
         """
         Extract forms and their inputs from a URL.
@@ -75,7 +93,7 @@ class BaseScanner(abc.ABC):
                     if response.status != 200:
                         return []
 
-                    html = await response.text()
+                    html = await self._safe_read(response)
                     try:
                         soup = BeautifulSoup(html, "lxml")
                     except Exception:

@@ -1,4 +1,4 @@
-# vulnradar/reconn/webapp.py - Web Application Analysis Module
+﻿# vulnradar/reconn/webapp.py - Web Application Analysis Module
 import asyncio
 import re
 from pathlib import Path
@@ -13,6 +13,7 @@ from ..utils.error_handler import (
     get_global_error_handler,
     handle_async_errors,
 )
+from ..utils.http_utils import safe_read_response
 from ..utils.logger import setup_logger
 from ..utils.rate_limit import RateLimiter
 from ._target import ReconTarget
@@ -89,7 +90,7 @@ class WebApplicationAnalyzer:
                 try:
                     async with session.get(self.target.url) as response:
                         await self.rate_limiter.report_success()
-                        html = await response.text()
+                        html = await safe_read_response(response)
                         headers = response.headers
 
                         # Analyze response headers
@@ -346,7 +347,7 @@ class WebApplicationAnalyzer:
                         await self.rate_limiter.report_success()
                         if response.status == 200:
                             results["found"] = True
-                            content = await response.text()
+                            content = await safe_read_response(response)
 
                             # Parse robots.txt content
                             for line in content.splitlines():
@@ -406,7 +407,7 @@ class WebApplicationAnalyzer:
                             await self.rate_limiter.report_success()
                             if response.status == 200:
                                 results["found"] = True
-                                content = await response.text()
+                                content = await safe_read_response(response)
 
                                 # Parse XML content
                                 soup = BeautifulSoup(content, "xml")
@@ -661,7 +662,7 @@ class WebApplicationAnalyzer:
                 try:
                     async with session.get(self.target.url) as response:
                         await self.rate_limiter.report_success()
-                        html = await response.text()
+                        html = await safe_read_response(response)
                         try:
                             soup = BeautifulSoup(html, "lxml")
                         except Exception:

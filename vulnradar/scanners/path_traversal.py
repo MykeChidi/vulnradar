@@ -1,4 +1,4 @@
-# vulnradar/scanners/path_traversal.py - Path Traversal Scanner
+﻿# vulnradar/scanners/path_traversal.py - Path Traversal Scanner
 
 import asyncio
 import re
@@ -217,7 +217,7 @@ class PathTraversalScanner(BaseScanner):
                         headers=self.headers, timeout=timeout_obj
                     ) as session:
                         async with session.get(test_url) as response:
-                            response_text = await response.text()
+                            response_text = await self._safe_read(response)
 
                             # Check for path traversal indicators
                             if await self._detect_path_traversal(
@@ -291,12 +291,12 @@ class PathTraversalScanner(BaseScanner):
                             async with session.post(
                                 form["action"], data=form_data
                             ) as response:
-                                response_text = await response.text()
+                                response_text = await self._safe_read(response)
                         else:
                             async with session.get(
                                 form["action"], params=form_data
                             ) as response:
-                                response_text = await response.text()
+                                response_text = await self._safe_read(response)
 
                         # Check for path traversal indicators
                         if await self._detect_path_traversal(
@@ -450,7 +450,7 @@ class PathTraversalScanner(BaseScanner):
                 headers=self.headers, timeout=timeout
             ) as session:
                 async with session.get(url) as response:
-                    response_text = await response.text()
+                    response_text = await self._safe_read(response)
 
                     # Check if we still get the same indicators
                     return await self._detect_path_traversal(response_text, payload)

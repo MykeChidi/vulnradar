@@ -1,4 +1,4 @@
-# vulnradar/scanners/comm_injection.py - Command Injection Scanner
+﻿# vulnradar/scanners/comm_injection.py - Command Injection Scanner
 
 import asyncio
 import re
@@ -129,7 +129,7 @@ class CommandInjectionScanner(BaseScanner):
                     ) as session:
                         async with session.get(test_url) as response:
                             response_time = time.time() - start_time
-                            response_text = await response.text()
+                            response_text = await self._safe_read(response)
 
                             # Check for evidence of command execution
                             evidence = self._check_evidence(response_text, payload)
@@ -222,14 +222,14 @@ class CommandInjectionScanner(BaseScanner):
                                     action_url, data=form_data
                                 ) as response:
                                     response_time = time.time() - start_time
-                                    response_text = await response.text()
+                                    response_text = await self._safe_read(response)
                             else:
                                 # Handle GET forms
                                 async with session.get(
                                     action_url, params=form_data
                                 ) as response:
                                     response_time = time.time() - start_time
-                                    response_text = await response.text()
+                                    response_text = await self._safe_read(response)
 
                             # Check for evidence
                             evidence = self._check_evidence(response_text, payload)
@@ -315,7 +315,7 @@ class CommandInjectionScanner(BaseScanner):
                             url, json=json_payload, headers=headers
                         ) as response:
                             response_time = time.time() - start_time
-                            response_text = await response.text()
+                            response_text = await self._safe_read(response)
 
                             # Check for evidence
                             evidence = self._check_evidence(response_text, payload)
@@ -462,13 +462,13 @@ class CommandInjectionScanner(BaseScanner):
                                 f"{url}{'&' if '?' in url else '?'}test={payload}"
                             )
                             async with session.get(test_url) as response:
-                                response_text = await response.text()
+                                response_text = await self._safe_read(response)
                         else:
                             # Test as POST data
                             async with session.post(
                                 url, data={"test": payload}
                             ) as response:
-                                response_text = await response.text()
+                                response_text = await self._safe_read(response)
 
                         # Check if we can reproduce the evidence
                         if self._check_evidence(response_text, payload):
@@ -486,7 +486,7 @@ class CommandInjectionScanner(BaseScanner):
                 async with session.get(
                     f"{url}{'&' if '?' in url else '?'}test={validation_payload}"
                 ) as response:
-                    response_text = await response.text()
+                    response_text = await self._safe_read(response)
 
                     # Look for our validation string
                     if "VALIDATION_TEST_12345" in response_text:

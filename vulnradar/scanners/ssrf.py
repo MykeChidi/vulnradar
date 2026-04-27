@@ -208,7 +208,7 @@ class SSRFScanner(BaseScanner):
                 headers=self.headers, timeout=timeout_obj
             ) as session:
                 async with session.get(test_url) as response:
-                    response_text = await response.text()
+                    response_text = await self._safe_read(response)
 
                     # Check for SSRF indicators in response
                     for indicator in self.indicators:
@@ -302,7 +302,7 @@ class SSRFScanner(BaseScanner):
                     "severity": "Medium",
                     "endpoint": test_url,
                     "description": f"Potential SSRF via error response in {injection_type} '{param_name}'",
-                    "evidence": f"Error response indicates internal network access attempt: {str(e)}",
+                    "evidence": f"Error response indicates potential internal network access: {error_handler._sanitize_message(str(e))}",  # noqa
                     "payload": payload,
                     "remediation": "Implement proper error handling and URL validation",
                     "confidence": "Low",
@@ -342,7 +342,7 @@ class SSRFScanner(BaseScanner):
             ) as session:
                 if method.lower() == "post":
                     async with session.post(action_url, data=form_data) as response:
-                        response_text = await response.text()
+                        response_text = await self._safe_read(response)
 
                         # Check for SSRF indicators
                         for indicator in self.indicators:
@@ -395,7 +395,7 @@ class SSRFScanner(BaseScanner):
                     "severity": "Medium",
                     "endpoint": action_url,
                     "description": f"Potential SSRF via error response in form input '{input_name}'",
-                    "evidence": f"Error response indicates internal network access attempt: {str(e)}",
+                    "evidence": f"Error response indicates potential internal network access: {error_handler._sanitize_message(str(e))}",  # noqa
                     "payload": payload,
                     "remediation": "Implement proper error handling and URL validation",
                     "confidence": "Low",
@@ -431,7 +431,7 @@ class SSRFScanner(BaseScanner):
                 headers=self.headers, timeout=timeout
             ) as session:
                 async with session.get(url) as response:
-                    response_text = await response.text()
+                    response_text = await self._safe_read(response)
 
                     # Check if the same indicators are still present
                     for indicator in self.indicators:

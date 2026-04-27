@@ -112,7 +112,7 @@ class SQLInjectionScanner(BaseScanner):
                         headers=self.headers, timeout=timeout_obj
                     ) as session:
                         async with session.get(test_url) as response:
-                            response_text = await response.text()
+                            response_text = await self._safe_read(response)
 
                             # Check for SQL errors in the response
                             if self._check_for_sql_errors(response_text):
@@ -197,7 +197,7 @@ class SQLInjectionScanner(BaseScanner):
                             async with session.post(
                                 action_url, data=form_data
                             ) as response:
-                                response_text = await response.text()
+                                response_text = await self._safe_read(response)
 
                                 # Check for SQL errors in the response
                                 if self._check_for_sql_errors(response_text):
@@ -225,7 +225,7 @@ class SQLInjectionScanner(BaseScanner):
                             async with session.get(
                                 action_url, params=form_data
                             ) as response:
-                                response_text = await response.text()
+                                response_text = await self._safe_read(response)
 
                                 # Check for SQL errors in the response
                                 if self._check_for_sql_errors(response_text):
@@ -290,12 +290,17 @@ class SQLInjectionScanner(BaseScanner):
         Returns:
             str: Error snippet or empty string if no error found
         """
+        # Cap input length to prevent catastrophic regex backtracking (F-10)
+        capped = response_text[:50_000]
         for pattern in self.error_patterns:
-            match = re.search(
-                f"(.{{0,100}}){pattern}(.{{0,100}})", response_text, re.IGNORECASE
-            )
-            if match:
-                return match.group(0)
+            try:
+                match = re.search(
+                    f"(.{{0,100}}){pattern}(.{{0,100}})", capped, re.IGNORECASE
+                )
+                if match:
+                    return match.group(0)
+            except re.error:
+                continue  # Skip malformed patterns gracefully
 
         return ""
 
@@ -351,7 +356,7 @@ class SQLInjectionScanner(BaseScanner):
                     headers=self.headers, timeout=timeout_obj
                 ) as session:
                     async with session.get(test_url) as response:
-                        response_text = await response.text()
+                        response_text = await self._safe_read(response)
 
                         # Check for SQL errors in the response
                         return self._check_for_sql_errors(response_text)
@@ -383,7 +388,7 @@ class SQLInjectionScanner(BaseScanner):
                         headers=self.headers, timeout=timeout_obj
                     ) as session:
                         async with session.get(test_url) as response:
-                            response_text = await response.text()
+                            response_text = await self._safe_read(response)
 
                             # Check for SQL errors in the response
                             if self._check_for_sql_errors(response_text):

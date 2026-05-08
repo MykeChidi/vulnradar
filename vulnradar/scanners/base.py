@@ -1,12 +1,15 @@
 # vulnradar/scanners/base.py - Base Scanner class
 
 import abc
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import aiohttp
 from bs4 import BeautifulSoup
 
 from ..utils.error_handler import ParseError, ValidationError, get_global_error_handler
+
+if TYPE_CHECKING:
+    from ..context import ScanContext
 
 # Hard cap on response body size to prevent memory exhaustion when scanning
 # a malicious target that returns an unbounded stream (F-01).
@@ -32,6 +35,27 @@ class BaseScanner(abc.ABC):
         self.timeout: aiohttp.ClientTimeout = aiohttp.ClientTimeout(
             total=timeout, connect=5, sock_read=timeout
         )
+
+        self._context: Optional["ScanContext"] = None
+
+    def attach_context(self, context: "ScanContext") -> None:
+        """
+        Inject the shared ScanContext before scanning begins.
+        """
+        self._context = context
+
+    @property
+    def session(self) -> aiohttp.ClientSession:
+        """
+        Return the shared aiohttp.ClientSession from the attached ScanContext.
+        instead of creating a new session.
+        """
+        if self._context is None or self._context.session is None:
+            raise RuntimeError(
+                f"{self.__class__.__name__}: ScanContext not attached. "
+                "Call attach_context() before scan()."
+            )
+        return self._context.session
 
     @abc.abstractmethod
     async def scan(self, url: str) -> List[Dict]:
@@ -68,9 +92,6 @@ class BaseScanner(abc.ABC):
     ) -> str:
         """
         Read at most ``limit`` bytes from a response and return decoded text.
-
-        Using ``response.text()`` directly is unsafe against a malicious target
-        that streams a very large body — this method caps the read.
         """
         body = await response.content.read(limit)
         return body.decode(errors="replace")
@@ -85,11 +106,22 @@ class BaseScanner(abc.ABC):
         Returns:
             List[Dict]: List of forms with their inputs
         """
+        from urllib.parse import urljoin
+
+        # Determine whether we have a shared session to reuse.
+        _own_session = self._context is None or self._context.session is None
+        _session: aiohttp.ClientSession
+
         try:
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=self.timeout
-            ) as session:
-                async with session.get(url) as response:
+            if _own_session:
+                _session = aiohttp.ClientSession(
+                    headers=self.headers, timeout=self.timeout
+                )
+            else:
+                _session = self._context.session  # type: ignore[union-attr]
+
+            try:
+                async with _session.get(url) as response:
                     if response.status != 200:
                         return []
 
@@ -101,33 +133,19 @@ class BaseScanner(abc.ABC):
                     forms = []
 
                     for form in soup.find_all("form"):
+                        action = form.get("action", "")
                         form_info = {
-                            "action": form.get("action", ""),
+                            "action": urljoin(url, action) if action else url,
                             "method": form.get("method", "get").lower(),
                             "inputs": [],
                         }
 
-                        # Handle relative URLs
-                        if form_info["action"].startswith("/"):
-                            from urllib.parse import urlparse
-
-                            parsed_url = urlparse(url)
-                            form_info["action"] = (
-                                f"{parsed_url.scheme}://{parsed_url.netloc}{form_info['action']}"
-                            )
-                        elif not form_info["action"]:
-                            form_info["action"] = url
-
-                        # Extract inputs
                         for input_tag in form.find_all(["input", "textarea", "select"]):
                             input_type = input_tag.get("type", "")
                             input_name = input_tag.get("name", "")
 
-                            # Skip submit, button, reset, etc.
                             if input_type in ["submit", "button", "reset", "image"]:
                                 continue
-
-                            # Skip inputs without name
                             if not input_name:
                                 continue
 
@@ -142,6 +160,11 @@ class BaseScanner(abc.ABC):
                         forms.append(form_info)
 
                     return forms
+
+            finally:
+                # Only close the session if we created it ourselves.
+                if _own_session:
+                    await _session.close()
 
         except Exception as e:
             error_handler.handle_error(

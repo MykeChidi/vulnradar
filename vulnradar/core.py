@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-# core.py - Main entry point for the Web Vulnerability Scanner
+# vulnradar/core.py - Main entry point for the Web Vulnerability Scanner
 
 import asyncio
 import time
-from typing import Any, Dict, List, Optional, Set, Type
+from functools import partial
+from typing import Any, Dict, List, Optional, Set
 
 import aiohttp
 import colorama
@@ -13,18 +14,15 @@ from nmap import PortScanner
 from tqdm import tqdm
 from wafw00f.main import WAFW00F
 
+from .context import ScanContext
+
 # Import custom modules
 from .crawlers import WebCrawler
 from .detector import TechDetector
+from .models.finding import Finding
 from .recon import ReconManager
 from .scanners.base import BaseScanner
-from .scanners.comm_injection import CommandInjectionScanner
-from .scanners.csrf import CSRFScanner
-from .scanners.file_inclusion import FileInclusionScanner
-from .scanners.path_traversal import PathTraversalScanner
-from .scanners.sqli import SQLInjectionScanner
-from .scanners.ssrf import SSRFScanner
-from .scanners.xss import XSSScanner
+from .scanners.registry import FINDING_TYPE_REGISTRY, SCANNER_REGISTRY
 from .utils.cache import ScanCache
 from .utils.db import VulnradarDatabase
 from .utils.error_handler import (
@@ -370,16 +368,21 @@ class VulnRadar:
 
         # DNS lookup
         dns_results = {}
+        loop = asyncio.get_event_loop()
         try:
             # A records
-            a_records = dns.resolver.resolve(hostname, "A")
+            a_records = await loop.run_in_executor(
+                None, partial(dns.resolver.resolve, hostname, "A")
+            )
             dns_results["A"] = [
                 str(r.address) for r in a_records if hasattr(r, "address")
             ]
 
             # MX records
             try:
-                mx_records = dns.resolver.resolve(hostname, "MX")
+                mx_records = await loop.run_in_executor(
+                    None, partial(dns.resolver.resolve, hostname, "MX")
+                )
                 dns_results["MX"] = [
                     str(r.exchange) for r in mx_records if hasattr(r, "exchange")
                 ]
@@ -388,14 +391,18 @@ class VulnRadar:
 
             # NS records
             try:
-                ns_records = dns.resolver.resolve(hostname, "NS")
+                ns_records = loop.run_in_executor(
+                    None, partial(dns.resolver.resolve, hostname, "NS")
+                )
                 dns_results["NS"] = [str(r) for r in ns_records]
             except dns.resolver.NoAnswer:
                 dns_results["NS"] = []
 
             # TXT records
             try:
-                txt_records = dns.resolver.resolve(hostname, "TXT")
+                txt_records = loop.run_in_executor(
+                    None, partial(dns.resolver.resolve, hostname, "TXT")
+                )
                 dns_results["TXT"] = [str(r) for r in txt_records]
             except dns.resolver.NoAnswer:
                 dns_results["TXT"] = []
@@ -543,128 +550,126 @@ class VulnRadar:
         """Run all selected vulnerability scans."""
         scanners: List[BaseScanner] = []
 
-        # Initialize selected scanners
-        if self.options.get("scan_sqli", True):
-            scanners.append(
-                SQLInjectionScanner(
-                    headers=self.headers, timeout=self.options.get("timeout", 10)
-                )
-            )
+        # Build the list of scanners from the registry.
+        # Adding a new scanner only requires a line in registry.py — nothing here changes.
+        timeout = self.options.get("timeout", 10)
+        common_args = {"headers": self.headers, "timeout": timeout}
 
-        if self.options.get("scan_xss", True):
-            scanners.append(
-                XSSScanner(
-                    headers=self.headers, timeout=self.options.get("timeout", 10)
-                )
-            )
+        scanners: List[BaseScanner] = [
+            cls(**common_args)
+            for option_key, cls in SCANNER_REGISTRY.items()
+            if self.options.get(option_key, True)
+        ]
 
-        if self.options.get("scan_csrf", True):
-            scanners.append(
-                CSRFScanner(
-                    headers=self.headers, timeout=self.options.get("timeout", 10)
-                )
-            )
+        # Create a shared aiohttp.ClientSession for this scan phase.
+        # All scanners receive it via attach_context() so no scanner
+        # creates its own session.
+        shared_session = aiohttp.ClientSession(
+            headers=self.headers,
+            timeout=aiohttp.ClientTimeout(total=timeout, connect=5, sock_read=timeout),
+        )
 
-        if self.options.get("scan_ssrf", True):
-            scanners.append(
-                SSRFScanner(
-                    headers=self.headers, timeout=self.options.get("timeout", 10)
-                )
-            )
+        # Build a lightweight ScanContext so scanners can access the session.
+        from .scanners.target import ScanTarget
 
-        if self.options.get("scan_path_traversal", True):
-            scanners.append(
-                PathTraversalScanner(
-                    headers=self.headers, timeout=self.options.get("timeout", 10)
-                )
-            )
+        scan_ctx = ScanContext(
+            target=ScanTarget.from_url(self.target_url),
+            options=self.options,
+            session=shared_session,
+            semaphore=asyncio.Semaphore(self.max_workers),
+            rate_limiter=None,  # full RateLimiter wired up in Phase 6
+            cache=self.cache,
+        )
+        # Seed endpoints from the crawl results already stored in self.results
+        for ep in self.results.get("endpoints", []):
+            scan_ctx.add_endpoint(ep)
 
-        if self.options.get("scan_file_inclusion", True):
-            scanners.append(
-                FileInclusionScanner(
-                    headers=self.headers, timeout=self.options.get("timeout", 10)
-                )
-            )
+        # Attach the shared context to every scanner
+        for scanner in scanners:
+            scanner.attach_context(scan_ctx)
 
-        if self.options.get("scan_command_injection", True):
-            scanners.append(
-                CommandInjectionScanner(
-                    headers=self.headers, timeout=self.options.get("timeout", 10)
-                )
-            )
+        # ── Pre-scan discovery hook ───────────────────────────────────────
+        # Duck-typed: scanners that don't need discovery simply don't have
+        # the method and are skipped here.
+        for scanner in scanners:
+            if hasattr(scanner, "discover"):
+                logger.info(f"Running discovery for {scanner.__class__.__name__}...")
+                await scanner.discover(self.results["endpoints"])
 
         # Run each scanner on all endpoints
-        all_vulnerabilities = []
+        all_raw: List = []
         batch_size = 100
 
-        for scanner in scanners:
-            scanner_name = scanner.__class__.__name__
-            logger.info(f"Running {scanner_name}...")
+        try:
+            for scanner in scanners:
+                scanner_name = scanner.__class__.__name__
+                logger.info(f"Running {scanner_name}...")
 
-            with tqdm(
-                total=len(self.results["endpoints"]),
-                desc=f"Running {scanner.__class__.__name__}".lower(),
-                unit="endpoints",
-            ) as pbar:
+                with tqdm(
+                    total=len(self.results["endpoints"]),
+                    desc=f"Running {scanner.__class__.__name__}".lower(),
+                    unit="endpoints",
+                ) as pbar:
 
-                # Process endpoints in batches
-                for i in range(0, len(self.results["endpoints"]), batch_size):
-                    batch = self.results["endpoints"][i : i + batch_size]  # noqa: E203
+                    for i in range(0, len(self.results["endpoints"]), batch_size):
+                        batch = self.results["endpoints"][
+                            i : i + batch_size
+                        ]  # noqa: E203
 
-                    # Create tasks for this batch
-                    tasks = []
-                    for endpoint in batch:
-                        cache_key = None
+                        tasks = []
+                        for endpoint in batch:
+                            cache_key = None
 
-                        # Check cache only if caching is enabled
-                        if self.cache is not None:
-                            cache_key = self.cache.generate_key(scanner_name, endpoint)
-                            cached_result = self.cache.get(cache_key)
+                            if self.cache is not None:
+                                cache_key = self.cache.generate_key(
+                                    scanner_name, endpoint
+                                )
+                                cached_result = self.cache.get(cache_key)
+                                if cached_result is not None:
+                                    if cached_result:
+                                        all_raw.extend(cached_result)
+                                    pbar.update(1)
+                                    pbar.set_postfix(cached="yes")
+                                    continue
 
-                            if cached_result is not None:
-                                if cached_result:
-                                    all_vulnerabilities.extend(cached_result)
-                                pbar.update(1)
-                                pbar.set_postfix(cached="yes")
-                                continue  # Skip to next endpoint if cached
+                            tasks.append((endpoint, scanner.scan(endpoint), cache_key))
 
-                        tasks.append((endpoint, scanner.scan(endpoint), cache_key))
-
-                    # Run tasks concurrently with a limit
-                    # Run uncached scans
-                    if tasks:
-                        endpoints, scan_tasks, cache_keys = zip(*tasks)
-                        results = await self.run_concurrently(
-                            scan_tasks, self.max_workers
-                        )
-
-                        for endpoint, result, cache_key in zip(
-                            endpoints, results, cache_keys
-                        ):
-                            if not isinstance(result, Exception) and result:
-                                # Cache result if caching is enabled
-                                if self.cache is not None and cache_key is not None:
-                                    self.cache.set(cache_key, result, ttl=3600)
-                                all_vulnerabilities.extend(result)
-
-                            pbar.update(1)
-                            pbar.set_postfix(
-                                cached="no", found=len(all_vulnerabilities)
+                        if tasks:
+                            endpoints, scan_tasks, cache_keys = zip(*tasks)
+                            results = await self.run_concurrently(
+                                scan_tasks, self.max_workers
                             )
 
-        # Log cache statistics
+                            for endpoint, result, cache_key in zip(
+                                endpoints, results, cache_keys
+                            ):
+                                if not isinstance(result, Exception) and result:
+                                    if self.cache is not None and cache_key is not None:
+                                        self.cache.set(cache_key, result, ttl=3600)
+                                    all_raw.extend(result)
+
+                                pbar.update(1)
+                                pbar.set_postfix(cached="no", found=len(all_raw))
+
+        finally:
+            await shared_session.close()
+
         if self.cache is not None:
             stats = self.cache.get_stats()
             logger.info(f"Cache statistics: {stats}")
 
-        # Validate findings
+        all_vulnerabilities: List[Dict] = []
+        for item in all_raw:
+            if isinstance(item, Finding):
+                all_vulnerabilities.append(item.to_dict())
+            else:
+                all_vulnerabilities.append(item)  # already a dict (unmigrated scanner)
+
         logger.info("Validating findings...")
         validated_vulns = await self.validate_findings(all_vulnerabilities)
 
-        # Store results
         self.results["vulnerabilities"] = validated_vulns
 
-        # Save to database if enabled
         if self.db:
             for vuln in validated_vulns:
                 self.db.add_vulnerability(
@@ -683,63 +688,70 @@ class VulnRadar:
 
     async def validate_findings(self, vulnerabilities: List[Dict]) -> List[Dict]:
         """
-        Validate vulnerability findings to reduce false positives.
+        Re-test each finding to confirm it is not a false positive.
 
         Args:
             vulnerabilities: List of vulnerability findings
 
         Returns:
-            List[Dict]: Validated vulnerabilities
+            List[Dict]: Validated vulnerabilities (false positives removed)
         """
         validated = []
+        timeout = self.options.get("timeout", 10)
+        common_args = {"headers": self.headers, "timeout": timeout}
 
-        for vuln in vulnerabilities:
-            # Basic validation: re-test the vulnerability
-            scanner_class: Optional[Type[BaseScanner]] = None
+        # One session shared across all validation calls in this method.
+        validation_session = aiohttp.ClientSession(
+            headers=self.headers,
+            timeout=aiohttp.ClientTimeout(total=timeout, connect=5, sock_read=timeout),
+        )
 
-            if vuln["type"] == "SQL Injection":
-                scanner_class = SQLInjectionScanner
-            elif vuln["type"] == "XSS":
-                scanner_class = XSSScanner
-            elif vuln["type"] == "CSRF":
-                scanner_class = CSRFScanner
-            elif vuln["type"] == "SSRF":
-                scanner_class = SSRFScanner
-            elif vuln["type"] == "Path Traversal":
-                scanner_class = PathTraversalScanner
-            elif vuln["type"] == "File Inclusion":
-                scanner_class = FileInclusionScanner
-            elif vuln["type"] == "Command Injection":
-                scanner_class = CommandInjectionScanner
+        from .scanners.target import ScanTarget
 
-            if scanner_class:
-                scanner = scanner_class(
-                    headers=self.headers, timeout=self.options.get("timeout", 10)
-                )
+        validation_ctx = ScanContext(
+            target=ScanTarget.from_url(self.target_url),
+            options=self.options,
+            session=validation_session,
+            semaphore=asyncio.Semaphore(self.max_workers),
+            rate_limiter=None,
+        )
 
-                # Perform a focused test on the specific endpoint with payload
+        try:
+            for vuln in vulnerabilities:
+                vuln_type = vuln.get("type", "")
+                scanner_class = FINDING_TYPE_REGISTRY.get(vuln_type)
+
+                if scanner_class is None:
+                    # No validator registered for this type — include it as-is
+                    validated.append(vuln)
+                    continue
+
+                scanner = scanner_class(**common_args)
+                scanner.attach_context(validation_ctx)
+
                 try:
-                    validation_result = await scanner.validate(
-                        url=vuln["endpoint"],
+                    confirmed = await scanner.validate(
+                        url=vuln.get("endpoint", ""),
                         payload=vuln.get("payload", ""),
                         evidence=vuln.get("evidence", ""),
                     )
-
-                    if validation_result:
+                    if confirmed:
                         validated.append(vuln)
 
                 except Exception as e:
-
                     error_handler.handle_error(
                         ScanError(
-                            f"Validation error for {vuln['type']} at {vuln['endpoint']}: {str(e)}",
+                            f"Validation error for {vuln_type} at "
+                            f"{vuln.get('endpoint', '?')}: {str(e)}",
                             original_error=e,
                         ),
                         context={"vulnerability": vuln},
                     )
-            else:
-                # If we don't have a validation method, include it anyway
-                validated.append(vuln)
+                    # On validation error, include the finding (conservative approach)
+                    validated.append(vuln)
+
+        finally:
+            await validation_session.close()
 
         return validated
 

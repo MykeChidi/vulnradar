@@ -1,7 +1,7 @@
 # vulnradar/reconn/_target.py - ReconTarget with comprehensive validation
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -30,8 +30,6 @@ class ReconTarget:
     ip: Optional[str] = None
     port: int = 80
     is_https: bool = False
-
-    _validated: bool = field(default=False, init=False, repr=False, compare=False)
 
     def __post_init__(self):
         """Validate all target attributes with comprehensive security checks."""
@@ -103,9 +101,6 @@ class ReconTarget:
             f"Target validated successfully: {self._sanitize_url_for_log(self.url)}"
         )
 
-        # Mark as validated (using object.__setattr__ to bypass frozen dataclass)
-        object.__setattr__(self, "_validated", True)
-
     def _validate_hostname(self, hostname: str) -> None:
         """
         FIX: Comprehensive hostname validation.
@@ -127,6 +122,22 @@ class ReconTarget:
 
         # Strip port if included in hostname
         hostname_clean = hostname.split(":")[0]
+
+        # Detect if hostname contains mixed scripts (e.g., Cyrillic and Latin)
+        if self._contains_mixed_scripts(hostname_clean):
+            error_msg = (
+                f"Hostname '{hostname_clean}' contains mixed Unicode scripts. "
+                "This is a potential IDN homograph attack."
+            )
+            logger.warning(error_msg)
+            error_handler.handle_error(
+                ValidationError(error_msg),
+                context={
+                    "validation_type": "mixed_scripts",
+                    "hostname": hostname_clean,
+                },
+            )
+            raise ValueError(error_msg)
 
         # Length validation (RFC 1035)
         if len(hostname_clean) > MAX_HOSTNAME_LENGTH:
@@ -169,12 +180,6 @@ class ReconTarget:
                 )
                 logger.error(error_msg)
                 raise ValueError(error_msg)
-
-        # Detect if hostname contains mixed scripts (e.g., Cyrillic and Latin)
-        if self._contains_mixed_scripts(hostname_clean):
-            logger.warning(f"Hostname '{hostname_clean}' contains mixed scripts. ")
-
-            raise ValueError("Hostname contains mixed scripts")
 
     def _contains_mixed_scripts(self, hostname: str) -> bool:
         """

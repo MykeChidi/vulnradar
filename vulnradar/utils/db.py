@@ -1,6 +1,6 @@
 # vulnradar/utils/db.py - Database For Storing Scanned Vulnerabilities
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Column, Integer, String, Text, create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -9,6 +9,9 @@ from sqlalchemy.pool import QueuePool
 
 from .error_handler import DatabaseError, get_global_error_handler, handle_errors
 from .logger import setup_logger
+
+if TYPE_CHECKING:
+    from ..models.finding import Finding
 
 logger = setup_logger("Database", log_to_file=False)
 error_handler = get_global_error_handler()
@@ -112,3 +115,20 @@ class VulnradarDatabase:
             raise
         finally:
             session.close()
+
+    def add_finding(self, finding: "Finding") -> None:
+        """
+        Store a Finding object in the database.
+
+        Args:
+            finding: A Finding dataclass instance containing vulnerability details
+        """
+        self.add_vulnerability(
+            target=finding.endpoint,
+            vulnerability_type=finding.type,
+            endpoint=finding.endpoint,
+            severity=finding.severity.value,
+            description=finding.description,
+            evidence=finding.evidence,
+            remediation=finding.remediation,
+        )

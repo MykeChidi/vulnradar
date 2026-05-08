@@ -4,6 +4,7 @@ import json
 import re
 import socket
 import ssl
+from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, cast
 from urllib.parse import urlparse
@@ -351,7 +352,10 @@ class InfrastructureRelationshipMapper:
 
         try:
             # Get nameservers
-            ns_records = dns.resolver.resolve(self.target.hostname, "NS")
+            loop = asyncio.get_event_loop()
+            ns_records = await loop.run_in_executor(
+                None, partial(dns.resolver.resolve, self.target.hostname, "NS")
+            )
             nameservers = [str(ns) for ns in ns_records]
 
             for ns in nameservers:
@@ -380,6 +384,17 @@ class InfrastructureRelationshipMapper:
         """
         live_subdomains = []
 
+        # Freeze iteration order ONCE — sets are unordered and will produce a
+        # different sequence on the second iteration, corrupting the zip pairing.
+        subdomain_list = list(subdomains)
+
+        # Limit to 50 simultaneous connections to avoid hitting OS or server limits.
+        semaphore = asyncio.Semaphore(50)
+
+        async def bounded_check(session: aiohttp.ClientSession, url: str) -> bool:
+            async with semaphore:
+                return await self._check_subdomain(session, url)
+
         try:
             async with aiohttp.ClientSession() as session:
                 tasks = []
@@ -387,15 +402,17 @@ class InfrastructureRelationshipMapper:
                     # Try both HTTP and HTTPS
                     tasks.extend(
                         [
-                            self._check_subdomain(session, f"http://{subdomain}"),
-                            self._check_subdomain(session, f"https://{subdomain}"),
+                            bounded_check(session, f"http://{subdomain}"),
+                            bounded_check(session, f"https://{subdomain}"),
                         ]
                     )
 
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
                 for subdomain, is_live in zip(
-                    [s for s in subdomains for _ in range(2)],  # Each subdomain twice
+                    [
+                        s for s in subdomain_list for _ in range(2)
+                    ],  # Each subdomain twice
                     results,
                 ):
                     if isinstance(is_live, bool) and is_live:
@@ -665,8 +682,14 @@ class InfrastructureRelationshipMapper:
                             # Check nameservers if present in signatures
                             if "nameservers" in sigs:
                                 try:
-                                    ns_records = dns.resolver.resolve(
-                                        self.target.hostname, "NS"
+                                    loop = asyncio.get_event_loop()
+                                    ns_records = await loop.run_in_executor(
+                                        None,
+                                        partial(
+                                            dns.resolver.resolve,
+                                            self.target.hostname,
+                                            "NS",
+                                        ),
                                     )
                                     for ns in ns_records:
                                         ns_str = str(ns).lower()
@@ -685,8 +708,14 @@ class InfrastructureRelationshipMapper:
                             # Check CNAME records for CDN domains
                             if "domains" in sigs:
                                 try:
-                                    cname_records = dns.resolver.resolve(
-                                        self.target.hostname, "CNAME"
+                                    loop = asyncio.get_event_loop()
+                                    cname_records = await loop.run_in_executor(
+                                        None,
+                                        partial(
+                                            dns.resolver.resolve,
+                                            self.target.hostname,
+                                            "CNAME",
+                                        ),
                                     )
                                     for cname in cname_records:
                                         cname_str = str(cname).lower()
@@ -731,7 +760,10 @@ class InfrastructureRelationshipMapper:
         # Get all IP addresses
         ips: Set[str] = set()
         try:
-            a_records = dns.resolver.resolve(self.target.hostname, "A")
+            loop = asyncio.get_event_loop()
+            a_records = await loop.run_in_executor(
+                None, partial(dns.resolver.resolve, self.target.hostname, "A")
+            )
             ips.update(str(r) for r in a_records)
         except dns.exception.DNSException as e:
             self.logger.error(f"Failed to resolve A records: {str(e)}")

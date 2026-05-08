@@ -276,8 +276,6 @@ class XSSScanner(BaseScanner):
             return True
 
         # Check for HTML-encoded payload reflection
-        import html
-
         encoded_payload = html.escape(payload)
         if encoded_payload in response_text:
             return True

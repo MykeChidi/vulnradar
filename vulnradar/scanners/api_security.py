@@ -8,6 +8,9 @@ from urllib.parse import urlparse
 
 import aiohttp
 
+from ..models.finding import Finding
+from ..models.severity import Severity
+from ..models.standards import get_standards
 from ..utils.error_handler import ScanError, get_global_error_handler
 from . import payloads
 from .contextual import ContextualScanner, EndpointContext
@@ -106,7 +109,7 @@ class APISecurityScanner(ContextualScanner):
 
     # ── public: scan ──────────────────────────────────────────────────────
 
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Run four API security checks on a single URL.
 
@@ -120,7 +123,7 @@ class APISecurityScanner(ContextualScanner):
         if url not in self.context.api_endpoints:
             return []
 
-        findings: List[Dict] = []
+        findings: List[Finding] = []
         baseline = self.context.api_endpoints[url]
 
         try:
@@ -203,42 +206,36 @@ class APISecurityScanner(ContextualScanner):
         }
         """
         try:
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=self.timeout
-            ) as session:
-                async with session.get(url) as response:
-                    body = await self._safe_read(response)
-                    return {
-                        "size": len(body),
-                        "requires_auth": response.status in (401, 403),
-                        "rate_limited": response.status == 429,
-                    }
+            async with self.session.get(url) as response:
+                body = await self._safe_read(response)
+                return {
+                    "size": len(body),
+                    "requires_auth": response.status in (401, 403),
+                    "rate_limited": response.status == 429,
+                }
 
         except Exception:
             return None
 
     # ── private: check 1 — rate limiting ──────────────────────────────────
 
-    async def _check_rate_limiting(self, url: str) -> List[Dict]:
+    async def _check_rate_limiting(self, url: str) -> List[Finding]:
         """
         Send 20 rapid requests to test for rate limiting.
 
         If more than 18 succeed with 200, there's no rate limiting.
         """
-        findings = []
+        findings: List[Finding] = []
 
         try:
             start_time = time.time()
             tasks = []
 
             # Fire 20 requests concurrently
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=self.timeout
-            ) as session:
-                for _ in range(_RATE_LIMIT_REQUEST_COUNT):
-                    tasks.append(session.get(url))
+            for _ in range(_RATE_LIMIT_REQUEST_COUNT):
+                tasks.append(self.session.get(url))
 
-                responses = await asyncio.gather(*tasks, return_exceptions=True)
+            responses = await asyncio.gather(*tasks, return_exceptions=True)
 
             elapsed = time.time() - start_time
 
@@ -254,28 +251,28 @@ class APISecurityScanner(ContextualScanner):
                 and success_count >= _RATE_LIMIT_SUCCESS_THRESHOLD
             ):
                 findings.append(
-                    {
-                        "type": "API Security",
-                        "endpoint": url,
-                        "severity": "Medium",
-                        "description": (
+                    Finding(
+                        type="API Security",
+                        endpoint=url,
+                        severity=Severity.MEDIUM,
+                        description=(
                             f"Missing rate limiting detected on API endpoint. Sent {_RATE_LIMIT_REQUEST_COUNT} "
                             f"requests in {elapsed:.2f} seconds, {success_count} succeeded with 200 status. "
                             f"No rate limiting (429 Too Many Requests) was enforced. This enables "
                             f"brute force attacks, enumeration, and denial of service."
                         ),
-                        "evidence": (
+                        evidence=(
                             f"Rapid-fire test: {_RATE_LIMIT_REQUEST_COUNT} requests to {url} in "
                             f"{elapsed:.2f}s. Success rate: {success_count}/{_RATE_LIMIT_REQUEST_COUNT}. "
                             f"Expected: rate limiting (429) after ~10-15 requests. Observed: no throttling."
                         ),
-                        "remediation": (
+                        remediation=(
                             "Implement rate limiting on all API endpoints. Use algorithms like "
                             "token bucket or sliding window. Recommended limits: 60-100 requests/minute "
                             "per IP or API key. Return 429 Too Many Requests with Retry-After header "
                             "when limits are exceeded."
                         ),
-                        "payload": json.dumps(
+                        payload=json.dumps(
                             {
                                 "check_type": "rate_limiting",
                                 "request_count": _RATE_LIMIT_REQUEST_COUNT,
@@ -284,7 +281,8 @@ class APISecurityScanner(ContextualScanner):
                                 "elapsed": elapsed,
                             }
                         ),
-                    }
+                        **get_standards("API Security"),
+                    )
                 )
 
         except Exception as e:
@@ -299,7 +297,7 @@ class APISecurityScanner(ContextualScanner):
 
     # ── private: check 2 — excessive data exposure ────────────────────────
 
-    async def _check_excessive_data(self, url: str, baseline: Dict) -> List[Dict]:
+    async def _check_excessive_data(self, url: str, baseline: Dict) -> List[Finding]:
         """
         Compare authenticated vs unauthenticated response sizes.
 
@@ -326,29 +324,29 @@ class APISecurityScanner(ContextualScanner):
             size_diff = auth_size - unauth_size
             if size_diff > _EXCESSIVE_DATA_THRESHOLD:
                 findings.append(
-                    {
-                        "type": "API Security",
-                        "endpoint": url,
-                        "severity": "High",
-                        "description": (
+                    Finding(
+                        type="API Security",
+                        endpoint=url,
+                        severity=Severity.HIGH,
+                        description=(
                             f"Excessive data exposure detected. Authenticated response is {size_diff} "
                             f"bytes larger than unauthenticated response ({auth_size} vs {unauth_size}). "
                             f"The API may be returning sensitive fields (password_hash, SSN, internal IDs) "
                             f"that should be filtered. Only return data the client needs."
                         ),
-                        "evidence": (
+                        evidence=(
                             f"GET {url} with authentication returned {auth_size} bytes. "
                             f"Same request without authentication returned {unauth_size} bytes. "
                             f"Difference: {size_diff} bytes (>{_EXCESSIVE_DATA_THRESHOLD} threshold). "
                             f"Likely exposing sensitive fields unnecessarily."
                         ),
-                        "remediation": (
+                        remediation=(
                             "Implement field filtering in API responses. Use DTOs (Data Transfer Objects) "
                             "to explicitly define which fields are exposed. Never return password_hash, "
                             "tokens, internal IDs, or PII unless specifically requested. Use GraphQL-style "
                             "field selection or JSON:API sparse fieldsets."
                         ),
-                        "payload": json.dumps(
+                        payload=json.dumps(
                             {
                                 "check_type": "excessive_data",
                                 "auth_size": auth_size,
@@ -357,9 +355,9 @@ class APISecurityScanner(ContextualScanner):
                                 "baseline_size": baseline.get("size", 0),
                             }
                         ),
-                    }
+                        **get_standards("API Security"),
+                    )
                 )
-
         except Exception as e:
             error_handler.handle_error(
                 ScanError(
@@ -372,7 +370,7 @@ class APISecurityScanner(ContextualScanner):
 
     # ── private: check 3 — missing endpoint authentication ────────────────
 
-    async def _check_missing_auth(self, url: str, baseline: Dict) -> List[Dict]:
+    async def _check_missing_auth(self, url: str, baseline: Dict) -> List[Finding]:
         """
         Test if endpoint responds to unauthenticated requests.
 
@@ -396,29 +394,29 @@ class APISecurityScanner(ContextualScanner):
             # If it returns 200 with substantial data, auth is missing
             if status == 200 and len(body) > 100:
                 findings.append(
-                    {
-                        "type": "API Security",
-                        "endpoint": url,
-                        "severity": "Critical",
-                        "description": (
+                    Finding(
+                        type="API Security",
+                        endpoint=url,
+                        severity=Severity.CRITICAL,
+                        description=(
                             f"Missing endpoint authentication detected. API endpoint {url} "
                             f"returned 200 OK with {len(body)} bytes of data without any "
                             f"authentication headers. This endpoint should require authentication "
                             f"but accepts unauthenticated requests. Attackers can access sensitive "
                             f"data without credentials."
                         ),
-                        "evidence": (
+                        evidence=(
                             f"GET {url} without Authorization header returned status 200 with "
                             f"{len(body)} bytes of response data. Expected: 401 Unauthorized or "
                             f"403 Forbidden. Observed: full response returned to unauthenticated client."
                         ),
-                        "remediation": (
+                        remediation=(
                             "Enforce authentication on all sensitive API endpoints. Verify JWT/OAuth "
                             "tokens, API keys, or session cookies before processing requests. Return "
                             "401 Unauthorized for missing credentials, 403 Forbidden for invalid ones. "
                             "Never assume clients will 'just know' to send auth headers."
                         ),
-                        "payload": json.dumps(
+                        payload=json.dumps(
                             {
                                 "check_type": "missing_auth",
                                 "status": status,
@@ -426,9 +424,9 @@ class APISecurityScanner(ContextualScanner):
                                 "requires_auth": baseline.get("requires_auth", False),
                             }
                         ),
-                    }
+                        **get_standards("API Security"),
+                    )
                 )
-
         except Exception as e:
             error_handler.handle_error(
                 ScanError(
@@ -441,7 +439,7 @@ class APISecurityScanner(ContextualScanner):
 
     # ── private: check 4 — improper asset management ──────────────────────
 
-    async def _check_non_production(self, url: str) -> List[Dict]:
+    async def _check_non_production(self, url: str) -> List[Finding]:
         """
         Flag non-production API endpoints (dev, test, staging, etc.).
 
@@ -470,30 +468,30 @@ class APISecurityScanner(ContextualScanner):
                 )
 
                 findings.append(
-                    {
-                        "type": "API Security",
-                        "endpoint": url,
-                        "severity": "Medium",
-                        "description": (
+                    Finding(
+                        type="API Security",
+                        endpoint=url,
+                        severity=Severity.MEDIUM,
+                        description=(
                             f"Improper asset management detected. Non-production API endpoint "
                             f"is publicly accessible: {url}. Path contains '{matched_pattern}', "
                             f"which typically indicates development, testing, or staging environments. "
                             f"These endpoints often have weaker security controls and expose internal "
                             f"functionality or debugging information."
                         ),
-                        "evidence": (
+                        evidence=(
                             f"GET {url} returned status 200 with {len(body)} bytes of data. "
                             f"Path pattern '{matched_pattern}' indicates non-production environment. "
                             f"These endpoints should not be exposed in production."
                         ),
-                        "remediation": (
+                        remediation=(
                             "Remove or restrict access to non-production API endpoints. Use separate "
                             "subdomains (dev.example.com) with IP whitelisting or VPN access. "
                             "Never deploy development, testing, or staging endpoints to production. "
                             "Document and version all public APIs properly (/api/v1/, /api/v2/). "
                             "Deprecate old versions gracefully."
                         ),
-                        "payload": json.dumps(
+                        payload=json.dumps(
                             {
                                 "check_type": "non_production",
                                 "matched_pattern": matched_pattern,
@@ -501,7 +499,8 @@ class APISecurityScanner(ContextualScanner):
                                 "body_length": len(body),
                             }
                         ),
-                    }
+                        **get_standards("API Security"),
+                    )
                 )
 
         except Exception as e:
@@ -519,12 +518,9 @@ class APISecurityScanner(ContextualScanner):
     async def _fetch_with_auth(self, url: str) -> Optional[tuple]:
         """Fetch with authentication headers. Returns (status, body) or None."""
         try:
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=self.timeout
-            ) as session:
-                async with session.get(url) as response:
-                    body = await self._safe_read(response)
-                    return (response.status, body)
+            async with self.session.get(url) as response:
+                body = await self._safe_read(response)
+                return (response.status, body)
 
         except Exception:
             return None
@@ -532,13 +528,9 @@ class APISecurityScanner(ContextualScanner):
     async def _fetch_without_auth(self, url: str) -> Optional[tuple]:
         """Fetch without authentication headers. Returns (status, body) or None."""
         try:
-            # Use empty headers (no Authorization, no cookies)
-            async with aiohttp.ClientSession(
-                headers={}, timeout=self.timeout
-            ) as session:
-                async with session.get(url) as response:
-                    body = await self._safe_read(response)
-                    return (response.status, body)
+            async with self.session.get(url, headers={}) as response:
+                body = await self._safe_read(response)
+                return (response.status, body)
 
         except Exception:
             return None

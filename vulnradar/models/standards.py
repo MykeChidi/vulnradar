@@ -100,12 +100,28 @@ VULN_STANDARDS: Dict[str, Dict] = {
         "owasp_category": "A03:2021 - Injection",
         "cvss_score": 8.8,
     },
-    # Phase 2 — uncomment as new scanners are added:
-    # "Open Redirect":           {"cwe_id": "CWE-601", "owasp_category": "A01:2021 - Broken Access Control",                      "cvss_score": 6.1},
-    # "SSTI":                    {"cwe_id": "CWE-94",  "owasp_category": "A03:2021 - Injection",                                  "cvss_score": 9.8},
-    # "CORS Misconfiguration":   {"cwe_id": "CWE-942", "owasp_category": "A05:2021 - Security Misconfiguration",                  "cvss_score": 6.5},
-    # "JWT Misconfiguration":    {"cwe_id": "CWE-347", "owasp_category": "A02:2021 - Cryptographic Failures",                     "cvss_score": 7.5},
 }
+# Phase 2 — uncomment as new scanners are added:
+""""Open Redirect": {
+    "cwe_id": "CWE-601",
+    "owasp_category": "A01:2021 - Broken Access Control",
+    "cvss_score": 6.1,
+},
+"SSTI": {
+    "cwe_id": "CWE-94",
+    "owasp_category": "A03:2021 - Injection",
+    "cvss_score": 9.8,
+},
+"CORS Misconfiguration": {
+    "cwe_id": "CWE-942",
+    "owasp_category": "A05:2021 - Security Misconfiguration",
+    "cvss_score": 6.5,
+},
+"JWT Misconfiguration": {
+    "cwe_id": "CWE-347",s
+    "owasp_category": "A02:2021 - Cryptographic Failures",
+    "cvss_score": 7.5,
+},"""
 
 
 def get_standards(vuln_type: str) -> Dict:

@@ -36,7 +36,7 @@ class ScanContext:
     # Shared async resources — set by VulnRadar before passing to scanners
     session: aiohttp.ClientSession = field(repr=False, default=None)  # type: ignore[assignment]
     semaphore: asyncio.Semaphore = field(repr=False, default=None)  # type: ignore[assignment]
-    rate_limiter: RateLimiter = field(repr=False, default=None)  # type: ignore[assignment]
+    rate_limiter: Optional[RateLimiter] = field(repr=False, default=None)  # type: ignore[assignment]
 
     # Accumulated scan state
     findings: list[Finding] = field(default_factory=list)

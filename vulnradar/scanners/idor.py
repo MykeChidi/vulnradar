@@ -6,6 +6,9 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import aiohttp
 
+from ..models.finding import Finding
+from ..models.severity import Severity
+from ..models.standards import get_standards
 from ..utils.error_handler import NetworkError, get_global_error_handler
 from .contextual import ContextualScanner, EndpointContext
 
@@ -61,7 +64,7 @@ class IDORScanner(ContextualScanner):
 
     # ── scan ──────────────────────────────────────────────────────────────
 
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Test a single URL for IDOR.
 
@@ -72,7 +75,7 @@ class IDORScanner(ContextualScanner):
         if not self.context:
             return []
 
-        findings: List[Dict] = []
+        findings: List[Finding] = []
 
         for pattern, info in self.context.id_endpoints.items():
             if url not in info["original_urls"]:
@@ -98,34 +101,35 @@ class IDORScanner(ContextualScanner):
                 # no baseline entry for this ID (i.e. it wasn't in the crawl)
                 if status == 200 and body_len >= _MIN_BODY_LENGTH:
                     findings.append(
-                        {
-                            "type": "IDOR",
-                            "endpoint": test_url,
-                            "severity": "High",
-                            "description": (
+                        Finding(
+                            type="IDOR",
+                            endpoint=test_url,
+                            severity=Severity.HIGH,
+                            description=(
                                 f"Unauthorized access to object ID {test_id} "
                                 f"via {pattern}"
                             ),
-                            "evidence": (
+                            evidence=(
                                 f"GET {test_url} returned status 200 with "
                                 f"{body_len} bytes of content. This ID was not "
                                 f"present in the crawl results but the server "
                                 f"returned data without an access-control error."
                             ),
-                            "remediation": (
+                            remediation=(
                                 "Enforce server-side authorization checks on every "
                                 "object access. Verify the requesting user has permission "
                                 "to access the specific resource ID. Do not rely on "
                                 "ID unpredictability as an access control mechanism."
                             ),
-                            "payload": json.dumps(
+                            payload=json.dumps(
                                 {
                                     "pattern": pattern,
                                     "test_id": test_id,
                                     "test_url": test_url,
                                 }
                             ),
-                        }
+                            **get_standards("IDOR"),
+                        )
                     )
 
             # Only test the first matching pattern for this URL
@@ -210,13 +214,10 @@ class IDORScanner(ContextualScanner):
         error pages) without storing full bodies.
         """
         try:
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=self.timeout
-            ) as session:
-                async with session.get(url) as response:
-                    body = await self._safe_read(response)
-                    body_hash = hashlib.sha256(body.encode()).hexdigest()
-                    return (response.status, len(body), body_hash)
+            async with self.session.get(url) as response:
+                body = await self._safe_read(response)
+                body_hash = hashlib.sha256(body.encode()).hexdigest()
+                return (response.status, len(body), body_hash)
 
         except (aiohttp.ClientError, TimeoutError) as e:
             error_handler.handle_error(

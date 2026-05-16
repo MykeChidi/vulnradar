@@ -7,8 +7,10 @@ from urllib.parse import urlparse
 import aiohttp
 from bs4 import BeautifulSoup
 
+from ..models.finding import Finding
+from ..models.severity import Severity
+from ..models.standards import get_standards
 from ..utils.error_handler import ScanError, get_global_error_handler
-from ..utils.logger import setup_logger
 from . import payloads
 from .stateful import StatefulScanner
 
@@ -45,14 +47,14 @@ class BrokenAuthScanner(StatefulScanner):
 
     # ── public interface ──────────────────────────────────────────────────
 
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Run all auth checks against a single URL.
 
         Returns early (empty list) if no login form is found — every
         check below depends on being able to submit credentials.
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
 
         try:
             # Step 1: locate the login form.  Everything below needs it.
@@ -75,7 +77,7 @@ class BrokenAuthScanner(StatefulScanner):
             # Steps 4–5 only make sense if we can actually log in.  Reuse
             # the first credential that worked; skip the rest if none did.
             if default_cred_finding:
-                cred = default_cred_finding.get("_working_credential")
+                cred = getattr(default_cred_finding, "_working_credential", None)
                 if cred:
                     session_finding = await self._check_session_after_logout(
                         url, login_form, cred
@@ -108,7 +110,8 @@ class BrokenAuthScanner(StatefulScanner):
         # Strip the internal-only key before returning — it's not part of
         # the finding schema that core.py / the DB expect.
         for f in findings:
-            f.pop("_working_credential", None)
+            if hasattr(f, "_working_credential"):
+                delattr(f, "_working_credential")
 
         return findings
 
@@ -269,7 +272,7 @@ class BrokenAuthScanner(StatefulScanner):
 
     async def _check_default_credentials(
         self, url: str, login_form: Dict
-    ) -> Optional[Dict]:
+    ) -> Optional[Finding]:
         """
         Try each pair in DEFAULT_CREDENTIALS.  Return a finding on the
         first one that produces an authenticated response.
@@ -297,29 +300,28 @@ class BrokenAuthScanner(StatefulScanner):
                 cast(Any, resp)._cached_text = await resp.text()
 
                 if self._looks_authenticated(resp):
-                    return {
-                        "type": "Broken Authentication",
-                        "endpoint": url,
-                        "severity": "High",
-                        "description": f"Default credential accepted: {username}/{password}",
-                        "evidence": (
+                    finding = Finding(
+                        type="Broken Authentication",
+                        endpoint=url,
+                        severity=Severity.HIGH,
+                        description=f"Default credential accepted: {username}/{password}",
+                        evidence=(
                             f"POST to {login_form['action']} with "
                             f"{login_form['user_field']}={username} "
                             f"returned authenticated response (status {resp.status})"
                         ),
-                        "remediation": (
+                        remediation=(
                             "Disable or change all default credentials. "
                             "Force password change on first login for any account "
                             "that ships with a known default."
                         ),
-                        "payload": json.dumps(
+                        payload=json.dumps(
                             {"username": username, "password": password}
                         ),
-                        "_working_credential": (
-                            username,
-                            password,
-                        ),  # internal only — stripped before return
-                    }
+                        **get_standards("Broken Authentication"),
+                    )
+                    finding._working_credential = (username, password)
+                    return finding
 
             except Exception as e:
                 error_handler.handle_error(
@@ -337,7 +339,7 @@ class BrokenAuthScanner(StatefulScanner):
 
     async def _check_account_lockout(
         self, url: str, login_form: Dict
-    ) -> Optional[Dict]:
+    ) -> Optional[Finding]:
         """
         Submit a clearly-wrong password 10 times for a synthetic username.
         If the server never returns 403 / 429 or a lockout page, account
@@ -385,31 +387,30 @@ class BrokenAuthScanner(StatefulScanner):
             )
             return None
 
-        return {
-            "type": "Broken Authentication",
-            "endpoint": url,
-            "severity": "Medium",
-            "description": f"No account lockout after {max_attempts} failed login attempts",
-            "evidence": (
+        return Finding(
+            type="Broken Authentication",
+            endpoint=url,
+            severity=Severity.MEDIUM,
+            description=f"No account lockout after {max_attempts} failed login attempts",
+            evidence=(
                 f"{max_attempts} POST requests to {login_form['action']} with invalid "
                 f"credentials all returned status {last_status} — no lockout or "
                 f"rate-limit response was observed"
             ),
-            "remediation": (
+            remediation=(
                 "Implement account lockout after 5–10 failed attempts. "
                 "Use CAPTCHA or rate limiting after 3 failures. "
                 "Consider progressive delay between attempts."
             ),
-            "payload": json.dumps(
-                {"check": "account_lockout", "attempts": max_attempts}
-            ),
-        }
+            payload=json.dumps({"check": "account_lockout", "attempts": max_attempts}),
+            **get_standards("Broken Authentication"),
+        )
 
     # ── check 3: session persistence after logout ─────────────────────────
 
     async def _check_session_after_logout(
         self, url: str, login_form: Dict, credential: tuple
-    ) -> Optional[Dict]:
+    ) -> Optional[Finding]:
         """
         Log in → find the logout URL → hit it → re-request the original
         page.  If the response still looks authenticated, the session was
@@ -444,22 +445,23 @@ class BrokenAuthScanner(StatefulScanner):
             cast(Any, recheck)._cached_text = await recheck.text()
 
             if self._looks_authenticated(recheck):
-                return {
-                    "type": "Broken Authentication",
-                    "endpoint": url,
-                    "severity": "High",
-                    "description": "Session remains valid after logout",
-                    "evidence": (
+                return Finding(
+                    type="Broken Authentication",
+                    endpoint=url,
+                    severity=Severity.HIGH,
+                    description="Session remains valid after logout",
+                    evidence=(
                         f"After logging out via {logout_url}, a subsequent GET to "
                         f"{url} returned an authenticated response (status {recheck.status}). "
                         f"The session cookie was not invalidated server-side."
                     ),
-                    "remediation": (
+                    remediation=(
                         "Invalidate the session token server-side on logout. "
                         "Do not rely solely on clearing the cookie client-side."
                     ),
-                    "payload": json.dumps({"check": "session_after_logout"}),
-                }
+                    payload=json.dumps({"check": "session_after_logout"}),
+                    **get_standards("Broken Authentication"),
+                )
 
         except Exception as e:
             error_handler.handle_error(
@@ -475,7 +477,7 @@ class BrokenAuthScanner(StatefulScanner):
 
     async def _check_session_fixation(
         self, url: str, login_form: Dict, credential: tuple
-    ) -> Optional[Dict]:
+    ) -> Optional[Finding]:
         """
         Record the session cookie value before login.  Log in.  If the
         session cookie is unchanged after a successful login, the server
@@ -506,22 +508,23 @@ class BrokenAuthScanner(StatefulScanner):
             post_session_id = self._extract_session_cookie_value(session)
 
             if post_session_id and pre_session_id == post_session_id:
-                return {
-                    "type": "Broken Authentication",
-                    "endpoint": url,
-                    "severity": "High",
-                    "description": "Session ID not rotated after login (session fixation)",
-                    "evidence": (
+                return Finding(
+                    type="Broken Authentication",
+                    endpoint=url,
+                    severity=Severity.HIGH,
+                    description="Session ID not rotated after login (session fixation)",
+                    evidence=(
                         f"Session cookie before login: {pre_session_id}. "
                         f"Session cookie after login:  {post_session_id}. "
                         f"Values are identical — the server did not regenerate the session."
                     ),
-                    "remediation": (
+                    remediation=(
                         "Regenerate the session ID immediately after successful "
                         "authentication. Never reuse a pre-authentication session ID."
                     ),
-                    "payload": json.dumps({"check": "session_fixation"}),
-                }
+                    payload=json.dumps({"check": "session_fixation"}),
+                    **get_standards("Broken Authentication"),
+                )
 
         except Exception as e:
             error_handler.handle_error(
@@ -535,7 +538,7 @@ class BrokenAuthScanner(StatefulScanner):
 
     async def _check_session_timeout(
         self, url: str, login_form: Dict, credential: tuple
-    ) -> Optional[Dict]:
+    ) -> Optional[Finding]:
         """
         Log in, then inspect every cookie in the jar.  If a cookie whose
         name looks like a session ID has neither Max-Age nor Expires set,
@@ -567,24 +570,25 @@ class BrokenAuthScanner(StatefulScanner):
                 has_expires = bool(cookie.get("expires"))
 
                 if not has_max_age and not has_expires:
-                    return {
-                        "type": "Broken Authentication",
-                        "endpoint": url,
-                        "severity": "Medium",
-                        "description": f"Session cookie '{cookie.key}' has no expiry (persistent cookie)",
-                        "evidence": (
+                    return Finding(
+                        type="Broken Authentication",
+                        endpoint=url,
+                        severity=Severity.MEDIUM,
+                        description=f"Session cookie '{cookie.key}' has no expiry (persistent cookie)",
+                        evidence=(
                             f"Cookie '{cookie.key}' has no Max-Age and no Expires attribute. "
                             f"This is a persistent cookie that survives browser restarts."
                         ),
-                        "remediation": (
+                        remediation=(
                             "Set an explicit Max-Age or Expires on session cookies. "
                             "Typical values: 30 minutes for sensitive apps, "
                             "24 hours for general use."
                         ),
-                        "payload": json.dumps(
+                        payload=json.dumps(
                             {"check": "session_timeout", "cookie": cookie.key}
                         ),
-                    }
+                        **get_standards("Broken Authentication"),
+                    )
 
         except Exception as e:
             error_handler.handle_error(

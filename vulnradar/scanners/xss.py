@@ -8,6 +8,9 @@ from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 import aiohttp
 from bs4 import BeautifulSoup
 
+from ..models.finding import Finding
+from ..models.severity import Severity
+from ..models.standards import get_standards
 from ..utils.error_handler import (
     ScanError,
     get_global_error_handler,
@@ -35,7 +38,7 @@ class XSSScanner(BaseScanner):
         user_message="XSS scan encountered an error",
         return_on_error=[],
     )
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Scan a URL for XSS vulnerabilities.
 
@@ -43,7 +46,7 @@ class XSSScanner(BaseScanner):
             url: URL to scan
 
         Returns:
-            List[Dict]: List of XSS findings
+            List[Finding]: List of XSS findings
         """
         vulnerabilities = []
         try:
@@ -73,7 +76,9 @@ class XSSScanner(BaseScanner):
 
         return vulnerabilities
 
-    async def _check_get_params(self, url: str, params: Dict[str, str]) -> List[Dict]:
+    async def _check_get_params(
+        self, url: str, params: Dict[str, str]
+    ) -> List[Finding]:
         """
         Check GET parameters for XSS vulnerabilities.
 
@@ -102,40 +107,31 @@ class XSSScanner(BaseScanner):
 
                 # Make the request
                 try:
-                    if isinstance(self.timeout, aiohttp.ClientTimeout):
-                        base = self.timeout.total or 0
-                    else:
-                        base = self.timeout
-                    timeout = aiohttp.ClientTimeout(
-                        total=base, connect=5, sock_read=base
-                    )
-                    async with aiohttp.ClientSession(
-                        headers=self.headers, timeout=timeout
-                    ) as session:
-                        async with session.get(test_url) as response:
-                            response_text = await self._safe_read(response)
+                    async with self.session.get(test_url) as response:
+                        response_text = await self._safe_read(response)
 
-                            # Check if the payload is reflected in the response
-                            if self._check_for_xss_reflection(response_text, payload):
-                                vulnerabilities.append(
-                                    {
-                                        "type": "XSS",
-                                        "endpoint": url,
-                                        "parameter": param_name,
-                                        "method": "GET",
-                                        "payload": payload,
-                                        "evidence": self._extract_reflection_snippet(
-                                            response_text, payload
-                                        ),
-                                        "severity": "High",
-                                        "description": f"Cross-Site Scripting vulnerability found in GET parameter '{param_name}'",  # noqa
-                                        "remediation": "Implement proper output encoding and input validation. "
-                                        "Consider using Content-Security-Policy headers.",
-                                    }
+                        # Check if the payload is reflected in the response
+                        if self._check_for_xss_reflection(response_text, payload):
+                            vulnerabilities.append(
+                                Finding(
+                                    type="XSS",
+                                    endpoint=url,
+                                    parameter=param_name,
+                                    method="GET",
+                                    payload=payload,
+                                    evidence=self._extract_reflection_snippet(
+                                        response_text, payload
+                                    ),
+                                    severity=Severity.HIGH,
+                                    description=f"Cross-Site Scripting vulnerability found in GET parameter '{param_name}'",  # noqa
+                                    remediation="Implement proper output encoding and input validation. "
+                                    "Consider using Content-Security-Policy headers.",
+                                    **get_standards("XSS"),
                                 )
+                            )
 
-                                # Stop testing this parameter after finding a vulnerability
-                                break
+                            # Stop testing this parameter after finding a vulnerability
+                            break
 
                 except Exception as e:
                     error_handler.handle_error(
@@ -148,7 +144,7 @@ class XSSScanner(BaseScanner):
 
         return vulnerabilities
 
-    async def _check_post_params(self, form: Dict) -> List[Dict]:
+    async def _check_post_params(self, form: Dict) -> List[Finding]:
         """
         Check POST parameters for XSS vulnerabilities.
 
@@ -180,75 +176,63 @@ class XSSScanner(BaseScanner):
 
                 # Make the request
                 try:
-                    if isinstance(self.timeout, aiohttp.ClientTimeout):
-                        base = self.timeout.total or 0
+                    if form.get("method") == "post":
+                        async with self.session.post(
+                            action_url, data=form_data
+                        ) as response:
+                            response_text = await self._safe_read(response)
+
+                            # Check if the payload is reflected in the response
+                            if self._check_for_xss_reflection(response_text, payload):
+                                vulnerabilities.append(
+                                    Finding(
+                                        type="XSS",
+                                        endpoint=action_url,
+                                        parameter=field_name,
+                                        method="POST",
+                                        payload=payload,
+                                        evidence=self._extract_reflection_snippet(
+                                            response_text, payload
+                                        ),
+                                        severity=Severity.HIGH,
+                                        description=f"Cross-Site Scripting vulnerability found in POST parameter '{field_name}'",  # noqa
+                                        remediation="Implement proper output encoding and input validation. "
+                                        "Consider using Content-Security-Policy headers.",
+                                        **get_standards("XSS"),
+                                    )
+                                )
+
+                                # Stop testing this parameter after finding a vulnerability
+                                break
                     else:
-                        base = self.timeout
-                    timeout = aiohttp.ClientTimeout(
-                        total=base, connect=5, sock_read=base
-                    )
-                    async with aiohttp.ClientSession(
-                        headers=self.headers, timeout=timeout
-                    ) as session:
-                        if form.get("method") == "post":
-                            async with session.post(
-                                action_url, data=form_data
-                            ) as response:
-                                response_text = await self._safe_read(response)
+                        # Handle GET forms
+                        async with self.session.get(
+                            action_url, params=form_data
+                        ) as response:
+                            response_text = await self._safe_read(response)
 
-                                # Check if the payload is reflected in the response
-                                if self._check_for_xss_reflection(
-                                    response_text, payload
-                                ):
-                                    vulnerabilities.append(
-                                        {
-                                            "type": "XSS",
-                                            "endpoint": action_url,
-                                            "parameter": field_name,
-                                            "method": "POST",
-                                            "payload": payload,
-                                            "evidence": self._extract_reflection_snippet(
-                                                response_text, payload
-                                            ),
-                                            "severity": "High",
-                                            "description": f"Cross-Site Scripting vulnerability found in POST parameter '{field_name}'",  # noqa
-                                            "remediation": "Implement proper output encoding and input validation. "
-                                            "Consider using Content-Security-Policy headers.",
-                                        }
+                            # Check if the payload is reflected in the response
+                            if self._check_for_xss_reflection(response_text, payload):
+                                vulnerabilities.append(
+                                    Finding(
+                                        type="XSS",
+                                        endpoint=action_url,
+                                        parameter=field_name,
+                                        method="GET",
+                                        payload=payload,
+                                        evidence=self._extract_reflection_snippet(
+                                            response_text, payload
+                                        ),
+                                        severity=Severity.HIGH,
+                                        description=f"Cross-Site Scripting vulnerability found in form parameter '{field_name}'",  # noqa
+                                        remediation="Implement proper output encoding and input validation."
+                                        "Consider using Content-Security-Policy headers.",
+                                        **get_standards("XSS"),
                                     )
+                                )
 
-                                    # Stop testing this parameter after finding a vulnerability
-                                    break
-                        else:
-                            # Handle GET forms
-                            async with session.get(
-                                action_url, params=form_data
-                            ) as response:
-                                response_text = await self._safe_read(response)
-
-                                # Check if the payload is reflected in the response
-                                if self._check_for_xss_reflection(
-                                    response_text, payload
-                                ):
-                                    vulnerabilities.append(
-                                        {
-                                            "type": "XSS",
-                                            "endpoint": action_url,
-                                            "parameter": field_name,
-                                            "method": "GET (form)",
-                                            "payload": payload,
-                                            "evidence": self._extract_reflection_snippet(
-                                                response_text, payload
-                                            ),
-                                            "severity": "High",
-                                            "description": f"Cross-Site Scripting vulnerability found in form parameter '{field_name}'",  # noqa
-                                            "remediation": "Implement proper output encoding and input validation."
-                                            "Consider using Content-Security-Policy headers.",
-                                        }
-                                    )
-
-                                    # Stop testing this parameter after finding a vulnerability
-                                    break
+                                # Stop testing this parameter after finding a vulnerability
+                                break
 
                 except Exception as e:
                     error_handler.handle_error(
@@ -436,7 +420,7 @@ class XSSScanner(BaseScanner):
 
         return None
 
-    async def _check_dom_xss(self, url: str) -> List[Dict]:
+    async def _check_dom_xss(self, url: str) -> List[Finding]:
         """
         Check for DOM-based XSS vulnerabilities.
 
@@ -461,35 +445,28 @@ class XSSScanner(BaseScanner):
             test_url = url + payload
 
             try:
-                if isinstance(self.timeout, aiohttp.ClientTimeout):
-                    base = self.timeout.total
-                else:
-                    base = self.timeout
-                timeout = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
-                async with aiohttp.ClientSession(
-                    headers=self.headers, timeout=timeout
-                ) as session:
-                    async with session.get(test_url) as response:
-                        response_text = await self._safe_read(response)
+                async with self.session.get(test_url) as response:
+                    response_text = await self._safe_read(response)
 
-                        # Check for DOM XSS indicators
-                        if self._check_dom_xss_indicators(response_text, payload):
-                            vulnerabilities.append(
-                                {
-                                    "type": "DOM XSS",
-                                    "endpoint": url,
-                                    "parameter": "URL Fragment",
-                                    "method": "GET",
-                                    "payload": payload,
-                                    "evidence": self._extract_dom_xss_evidence(
-                                        response_text, payload
-                                    ),
-                                    "severity": "High",
-                                    "description": "DOM-based Cross-Site Scripting vulnerability found",
-                                    "remediation": "Avoid using dangerous DOM methods with user input. "
-                                    "Validate and sanitize all user input before using in DOM operations.",
-                                }
+                    # Check for DOM XSS indicators
+                    if self._check_dom_xss_indicators(response_text, payload):
+                        vulnerabilities.append(
+                            Finding(
+                                type="DOM XSS",
+                                endpoint=url,
+                                parameter="URL Fragment",
+                                method="GET",
+                                payload=payload,
+                                evidence=self._extract_dom_xss_evidence(
+                                    response_text, payload
+                                ),
+                                severity=Severity.HIGH,
+                                description="DOM-based Cross-Site Scripting vulnerability found",
+                                remediation="Avoid using dangerous DOM methods with user input. "
+                                "Validate and sanitize all user input before using in DOM operations.",
+                                **get_standards("DOM XSS"),
                             )
+                        )
 
             except Exception as e:
                 error_handler.handle_error(

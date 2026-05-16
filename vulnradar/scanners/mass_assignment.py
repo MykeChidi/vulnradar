@@ -6,6 +6,9 @@ from urllib.parse import urlparse
 
 import aiohttp
 
+from ..models.finding import Finding
+from ..models.severity import Severity
+from ..models.standards import get_standards
 from ..utils.error_handler import NetworkError, get_global_error_handler
 from . import payloads
 from .contextual import ContextualScanner, EndpointContext
@@ -17,7 +20,6 @@ error_handler = get_global_error_handler()
 # SCANNER CLASS
 # Probe fields are imported from payloads module
 # ─────────────────────────────────────────────────────────────────────────────
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -124,7 +126,7 @@ class MassAssignmentScanner(ContextualScanner):
 
     # ── scan ──────────────────────────────────────────────────────────────
 
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Test a single URL for mass assignment.
 
@@ -138,7 +140,7 @@ class MassAssignmentScanner(ContextualScanner):
         if not self.context:
             return []
 
-        findings: List[Dict] = []
+        findings: List[Finding] = []
 
         # Find the best matching schema for this URL.
         # Exact match first, then try the base URL (strip trailing ID segment).
@@ -167,7 +169,12 @@ class MassAssignmentScanner(ContextualScanner):
         baseline_fields = self._extract_fields(baseline_resp_body)
 
         # Step 2 + 3: inject each probe field and compare
-        for field_name, injected_value, severity, why in payloads.mass_assignment_probe_fields:
+        for (
+            field_name,
+            injected_value,
+            severity,
+            why,
+        ) in payloads.mass_assignment_probe_fields:
             # Skip probe fields that are already in the legitimate schema —
             # if the app already exposes "role", injecting "role" is not
             # mass assignment, it's just using the API normally.
@@ -199,29 +206,29 @@ class MassAssignmentScanner(ContextualScanner):
                 continue
 
             findings.append(
-                {
-                    "type": "Mass Assignment",
-                    "endpoint": target_url,
-                    "severity": severity,
-                    "description": (
+                Finding(
+                    type="Mass Assignment",
+                    endpoint=target_url,
+                    severity=Severity.from_str(severity),
+                    description=(
                         f"Mass assignment detected: field '{field_name}' was accepted "
                         f"and processed by the server. {why}."
                     ),
-                    "evidence": (
+                    evidence=(
                         f"{write_method} {target_url} — injected '{field_name}' with value "
                         f"{json.dumps(injected_value)}. "
                         f"Baseline status: {baseline_status}, inject status: {inject_status}. "
                         f"Server response indicates the field was processed: "
                         f"'{field_name}' found in response body or response changed."
                     ),
-                    "remediation": (
+                    remediation=(
                         f"Explicitly whitelist the fields that each endpoint is allowed to "
                         f"accept.  Do not bind request bodies directly to model objects.  "
                         f"Use a DTO (Data Transfer Object) or explicit field list on "
                         f"deserialization.  Remove or deny '{field_name}' from all "
                         f"write endpoints that should not expose it."
                     ),
-                    "payload": json.dumps(
+                    payload=json.dumps(
                         {
                             "target_url": target_url,
                             "write_method": write_method,
@@ -230,7 +237,8 @@ class MassAssignmentScanner(ContextualScanner):
                             "schema": schema,
                         }
                     ),
-                }
+                    **get_standards("Mass Assignment"),
+                )
             )
 
         return findings
@@ -359,15 +367,12 @@ class MassAssignmentScanner(ContextualScanner):
         Returns None on network failure.
         """
         try:
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=self.timeout
-            ) as session:
-                req_headers = {**self.headers, "Content-Type": "application/json"}
-                async with session.request(
-                    method, url, json=body, headers=req_headers
-                ) as response:
-                    resp_body = await self._safe_read(response)
-                    return (response.status, resp_body)
+            req_headers = {**self.headers, "Content-Type": "application/json"}
+            async with self.session.request(
+                method, url, json=body, headers=req_headers
+            ) as response:
+                resp_body = await self._safe_read(response)
+                return (response.status, resp_body)
 
         except (aiohttp.ClientError, TimeoutError) as e:
             error_handler.handle_error(

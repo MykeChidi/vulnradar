@@ -8,6 +8,9 @@ from urllib.parse import urljoin
 
 import aiohttp
 
+from ..models.finding import Finding
+from ..models.severity import Severity
+from ..models.standards import get_standards
 from ..utils.error_handler import (
     ScanError,
     get_global_error_handler,
@@ -46,7 +49,7 @@ class CommandInjectionScanner(BaseScanner):
         user_message="Command injection scan encountered an error",
         return_on_error=[],
     )
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Scan a URL for command injection vulnerabilities.
 
@@ -54,9 +57,9 @@ class CommandInjectionScanner(BaseScanner):
             url: URL to scan
 
         Returns:
-            List[Dict]: List of vulnerability findings
+            List[Finding]: List of vulnerability findings
         """
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
 
         try:
             # Test GET parameters
@@ -82,9 +85,9 @@ class CommandInjectionScanner(BaseScanner):
 
         return vulnerabilities
 
-    async def _test_get_parameters(self, url: str) -> List[Dict]:
+    async def _test_get_parameters(self, url: str) -> List[Finding]:
         """Test GET parameters for command injection."""
-        vulnerabilities: list = []
+        vulnerabilities: List[Finding] = []
 
         # Extract existing parameters
         params = await self._extract_parameters(url)
@@ -117,51 +120,43 @@ class CommandInjectionScanner(BaseScanner):
                     # Time the request for time-based detection
                     start_time = time.time()
 
-                    if isinstance(self.timeout, aiohttp.ClientTimeout):
-                        timeout_obj = self.timeout
-                    else:
-                        base = self.timeout
-                        timeout_obj = aiohttp.ClientTimeout(
-                            total=base, connect=5, sock_read=base
-                        )
-                    async with aiohttp.ClientSession(
-                        headers=self.headers, timeout=timeout_obj
-                    ) as session:
-                        async with session.get(test_url) as response:
-                            response_time = time.time() - start_time
-                            response_text = await self._safe_read(response)
+                    async with self.session.get(test_url) as response:
+                        response_time = time.time() - start_time
+                        response_text = await self._safe_read(response)
 
-                            # Check for evidence of command execution
-                            evidence = self._check_evidence(response_text, payload)
+                        # Check for evidence of command execution
+                        evidence = self._check_evidence(response_text, payload)
 
-                            if evidence or self._is_time_based_vulnerable(
-                                payload, response_time
-                            ):
-                                vulnerability = {
-                                    "type": "Command Injection",
-                                    "severity": "High",
-                                    "endpoint": url,
-                                    "parameter": param_name,
-                                    "method": "GET",
-                                    "payload": payload,
-                                    "evidence": evidence
-                                    or f"Time delay detected: {response_time:.2f}s",
-                                    "description": f"Command injection vulnerability found in GET parameter '{param_name}'",  # noqa
-                                    "remediation": "Implement proper input validation and sanitization. "
-                                    "Use parameterized queries or prepared statements. "
-                                    "Avoid executing user input as system commands.",
-                                }
-                                vulnerabilities.append(vulnerability)
-                                break  # Found vulnerability, no need to test more payloads for this parameter
+                        if evidence or self._is_time_based_vulnerable(
+                            payload, response_time
+                        ):
+                            standards = get_standards("Command Injection")
+                            vulnerability = Finding(
+                                type="Command Injection",
+                                severity=Severity.HIGH,
+                                endpoint=url,
+                                parameter=param_name,
+                                method="GET",
+                                payload=payload,
+                                evidence=evidence
+                                or f"Time delay detected: {response_time:.2f}s",
+                                description=f"Command injection vulnerability found in GET parameter '{param_name}'",
+                                remediation="Implement proper input validation and sanitization. "
+                                "Use parameterized queries or prepared statements. "
+                                "Avoid executing user input as system commands.",
+                                **standards,
+                            )
+                            vulnerabilities.append(vulnerability)
+                            break  # Found vulnerability, no need to test more payloads for this parameter
 
                 except (aiohttp.ClientError, asyncio.TimeoutError):
                     continue
 
         return vulnerabilities
 
-    async def _test_forms(self, url: str) -> List[Dict]:
+    async def _test_forms(self, url: str) -> List[Finding]:
         """Test POST forms for command injection."""
-        vulnerabilities: list = []
+        vulnerabilities: List[Finding] = []
 
         # Get forms from the page
         forms = await self._get_form_inputs(url)
@@ -207,61 +202,53 @@ class CommandInjectionScanner(BaseScanner):
                         # Time the request
                         start_time = time.time()
 
-                        if isinstance(self.timeout, aiohttp.ClientTimeout):
-                            timeout_obj = self.timeout
+                        if method == "post":
+                            async with self.session.post(
+                                action_url, data=form_data
+                            ) as response:
+                                response_time = time.time() - start_time
+                                response_text = await self._safe_read(response)
                         else:
-                            base = self.timeout
-                            timeout_obj = aiohttp.ClientTimeout(
-                                total=base, connect=5, sock_read=base
+                            # Handle GET forms
+                            async with self.session.get(
+                                action_url, params=form_data
+                            ) as response:
+                                response_time = time.time() - start_time
+                                response_text = await self._safe_read(response)
+
+                        # Check for evidence
+                        evidence = self._check_evidence(response_text, payload)
+
+                        if evidence or self._is_time_based_vulnerable(
+                            payload, response_time
+                        ):
+                            standards = get_standards("Command Injection")
+                            vulnerability = Finding(
+                                type="Command Injection",
+                                severity=Severity.HIGH,
+                                endpoint=action_url,
+                                parameter=input_name,
+                                method=method.upper(),
+                                payload=payload,
+                                evidence=evidence
+                                or f"Time delay detected: {response_time:.2f}s",
+                                description=f"Command injection vulnerability found in form parameter '{input_name}'",
+                                remediation="Implement proper input validation and sanitization."
+                                "Use parameterized queries or prepared statements. "
+                                "Avoid executing user input as system commands.",
+                                **standards,
                             )
-                        async with aiohttp.ClientSession(
-                            headers=self.headers, timeout=timeout_obj
-                        ) as session:
-                            if method == "post":
-                                async with session.post(
-                                    action_url, data=form_data
-                                ) as response:
-                                    response_time = time.time() - start_time
-                                    response_text = await self._safe_read(response)
-                            else:
-                                # Handle GET forms
-                                async with session.get(
-                                    action_url, params=form_data
-                                ) as response:
-                                    response_time = time.time() - start_time
-                                    response_text = await self._safe_read(response)
-
-                            # Check for evidence
-                            evidence = self._check_evidence(response_text, payload)
-
-                            if evidence or self._is_time_based_vulnerable(
-                                payload, response_time
-                            ):
-                                vulnerability = {
-                                    "type": "Command Injection",
-                                    "severity": "High",
-                                    "endpoint": action_url,
-                                    "parameter": input_name,
-                                    "method": method.upper(),
-                                    "payload": payload,
-                                    "evidence": evidence
-                                    or f"Time delay detected: {response_time:.2f}s",
-                                    "description": f"Command injection vulnerability found in form parameter '{input_name}'",  # noqa
-                                    "remediation": "Implement proper input validation and sanitization."
-                                    "Use parameterized queries or prepared statements. "
-                                    "Avoid executing user input as system commands.",
-                                }
-                                vulnerabilities.append(vulnerability)
-                                break  # Found vulnerability, no need to test more payloads
+                            vulnerabilities.append(vulnerability)
+                            break  # Found vulnerability, no need to test more payloads
 
                     except (aiohttp.ClientError, asyncio.TimeoutError):
                         continue
 
         return vulnerabilities
 
-    async def _test_json_endpoints(self, url: str) -> List[Dict]:
+    async def _test_json_endpoints(self, url: str) -> List[Finding]:
         """Test JSON endpoints for command injection."""
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
 
         # Common JSON parameter names that might be vulnerable
         json_test_params = {
@@ -298,47 +285,39 @@ class CommandInjectionScanner(BaseScanner):
                     # Time the request
                     start_time = time.time()
 
-                    if isinstance(self.timeout, aiohttp.ClientTimeout):
-                        base = self.timeout.total or 0
-                    else:
-                        base = self.timeout
-                    timeout_obj = aiohttp.ClientTimeout(
-                        total=base, connect=5, sock_read=base
-                    )
-                    async with aiohttp.ClientSession(
-                        headers=self.headers, timeout=timeout_obj
-                    ) as session:
-                        headers = self.headers.copy()
-                        headers["Content-Type"] = "application/json"
+                    headers = self.headers.copy()
+                    headers["Content-Type"] = "application/json"
 
-                        async with session.post(
-                            url, json=json_payload, headers=headers
-                        ) as response:
-                            response_time = time.time() - start_time
-                            response_text = await self._safe_read(response)
+                    async with self.session.post(
+                        url, json=json_payload, headers=headers
+                    ) as response:
+                        response_time = time.time() - start_time
+                        response_text = await self._safe_read(response)
 
-                            # Check for evidence
-                            evidence = self._check_evidence(response_text, payload)
+                        # Check for evidence
+                        evidence = self._check_evidence(response_text, payload)
 
-                            if evidence or self._is_time_based_vulnerable(
-                                payload, response_time
-                            ):
-                                vulnerability = {
-                                    "type": "Command Injection",
-                                    "severity": "High",
-                                    "endpoint": url,
-                                    "parameter": param_name,
-                                    "method": "POST",
-                                    "payload": payload,
-                                    "evidence": evidence
-                                    or f"Time delay detected: {response_time:.2f}s",
-                                    "description": f"Command injection vulnerability found in JSON parameter '{param_name}'",  # noqa
-                                    "remediation": "Implement proper input validation and sanitization. "
-                                    "Use parameterized queries or prepared statements. "
-                                    "Avoid executing user input as system commands.",
-                                }
-                                vulnerabilities.append(vulnerability)
-                                break  # Found vulnerability, no need to test more payloads
+                        if evidence or self._is_time_based_vulnerable(
+                            payload, response_time
+                        ):
+                            standards = get_standards("Command Injection")
+                            vulnerability = Finding(
+                                type="Command Injection",
+                                severity=Severity.HIGH,
+                                endpoint=url,
+                                parameter=param_name,
+                                method="POST",
+                                payload=payload,
+                                evidence=evidence
+                                or f"Time delay detected: {response_time:.2f}s",
+                                description=f"Command injection vulnerability found in JSON parameter '{param_name}'",
+                                remediation="Implement proper input validation and sanitization. "
+                                "Use parameterized queries or prepared statements. "
+                                "Avoid executing user input as system commands.",
+                                **standards,
+                            )
+                            vulnerabilities.append(vulnerability)
+                            break  # Found vulnerability, no need to test more payloads
 
                 except (aiohttp.ClientError, asyncio.TimeoutError):
                     continue
@@ -442,55 +421,41 @@ class CommandInjectionScanner(BaseScanner):
             bool: True if vulnerability is confirmed
         """
         try:
-            # Re-test with the same payload
-            if isinstance(self.timeout, aiohttp.ClientTimeout):
-                base = self.timeout.total
-            else:
-                base = self.timeout
-            timeout = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=timeout
-            ) as session:
-                # Try different methods based on original finding
-                methods_to_try = ["GET", "POST"]
+            # Try different methods based on original finding
+            methods_to_try = ["GET", "POST"]
 
-                for method in methods_to_try:
-                    try:
-                        if method == "GET":
-                            # Test as GET parameter
-                            test_url = (
-                                f"{url}{'&' if '?' in url else '?'}test={payload}"
-                            )
-                            async with session.get(test_url) as response:
-                                response_text = await self._safe_read(response)
-                        else:
-                            # Test as POST data
-                            async with session.post(
-                                url, data={"test": payload}
-                            ) as response:
-                                response_text = await self._safe_read(response)
+            for method in methods_to_try:
+                try:
+                    if method == "GET":
+                        # Test as GET parameter
+                        test_url = f"{url}{'&' if '?' in url else '?'}test={payload}"
+                        async with self.session.get(test_url) as response:
+                            response_text = await self._safe_read(response)
+                    else:
+                        # Test as POST data
+                        async with self.session.post(
+                            url, data={"test": payload}
+                        ) as response:
+                            response_text = await self._safe_read(response)
 
-                        # Check if we can reproduce the evidence
-                        if self._check_evidence(response_text, payload):
-                            return True
+                    # Check if we can reproduce the evidence
+                    if self._check_evidence(response_text, payload):
+                        return True
 
-                    except (aiohttp.ClientError, asyncio.TimeoutError):
-                        continue
+                except (aiohttp.ClientError, asyncio.TimeoutError):
+                    continue
 
             # If we can't reproduce the exact evidence, try a simple validation payload
             validation_payload = "; echo 'VALIDATION_TEST_12345'"
 
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=timeout
-            ) as session:
-                async with session.get(
-                    f"{url}{'&' if '?' in url else '?'}test={validation_payload}"
-                ) as response:
-                    response_text = await self._safe_read(response)
+            async with self.session.get(
+                f"{url}{'&' if '?' in url else '?'}test={validation_payload}"
+            ) as response:
+                response_text = await self._safe_read(response)
 
-                    # Look for our validation string
-                    if "VALIDATION_TEST_12345" in response_text:
-                        return True
+            # Look for our validation string
+            if "VALIDATION_TEST_12345" in response_text:
+                return True
 
         except Exception as e:
             error_handler.handle_error(

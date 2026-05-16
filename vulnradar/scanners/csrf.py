@@ -5,6 +5,9 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 
+from ..models.finding import Finding
+from ..models.severity import Severity
+from ..models.standards import get_standards
 from ..utils.error_handler import (
     ScanError,
     get_global_error_handler,
@@ -54,7 +57,7 @@ class CSRFScanner(BaseScanner):
         user_message="CSRF scan encountered an error",
         return_on_error=[],
     )
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Scan a URL for CSRF vulnerabilities.
 
@@ -62,9 +65,9 @@ class CSRFScanner(BaseScanner):
             url: URL to scan
 
         Returns:
-            List[Dict]: List of CSRF vulnerability findings
+            List[Finding]: List of CSRF vulnerability findings
         """
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
 
         try:
             # Get forms from the page
@@ -88,7 +91,7 @@ class CSRFScanner(BaseScanner):
 
         return vulnerabilities
 
-    async def _test_csrf_protection(self, url: str, form: Dict) -> List[Dict]:
+    async def _test_csrf_protection(self, url: str, form: Dict) -> List[Finding]:
         """
         Test a form for CSRF protection.
 
@@ -97,7 +100,7 @@ class CSRFScanner(BaseScanner):
             form: Form information dictionary
 
         Returns:
-            List[Dict]: List of CSRF vulnerabilities found
+            List[Finding]: List of CSRF vulnerabilities found
         """
         vulnerabilities = []
 
@@ -139,9 +142,7 @@ class CSRFScanner(BaseScanner):
 
         return False
 
-    async def _test_missing_csrf_token(
-        self, url: str, form: Dict
-    ) -> Optional[Dict[str, Any]]:
+    async def _test_missing_csrf_token(self, url: str, form: Dict) -> Optional[Finding]:
         """
         Test for missing CSRF token vulnerability.
 
@@ -150,7 +151,7 @@ class CSRFScanner(BaseScanner):
             form: Form information dictionary
 
         Returns:
-            Dict: Vulnerability information if found, None otherwise
+            Optional[Finding]: Vulnerability information if found, None otherwise
         """
         try:
             # Prepare form data
@@ -161,33 +162,25 @@ class CSRFScanner(BaseScanner):
                 else:
                     form_data[input_field["name"]] = "csrf_test_value"
 
-            # Submit form without CSRF token
-            if isinstance(self.timeout, aiohttp.ClientTimeout):
-                base = self.timeout.total or 0
-            else:
-                base = self.timeout
-            timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=timeout_obj
-            ) as session:
-                if form["method"].lower() == "post":
-                    async with session.post(
-                        form["action"] or url, data=form_data, allow_redirects=False
-                    ) as response:
-                        await self._safe_read(response)
+            if form["method"].lower() == "post":
+                async with self.session.post(
+                    form["action"] or url, data=form_data, allow_redirects=False
+                ) as response:
+                    await self._safe_read(response)
 
-                        # Check if request was successful (indicates missing CSRF protection)
-                        if response.status in [200, 201, 302, 303]:
-                            return {
-                                "type": "CSRF",
-                                "severity": "Medium",
-                                "endpoint": form["action"] or url,
-                                "description": "Form lacks CSRF token protection",
-                                "evidence": f"Form submitted successfully without CSRF token. Status: {response.status}",  # noqa
-                                "payload": str(form_data),
-                                "remediation": "Implement CSRF token validation for all state-changing operations",
-                                "confidence": "High",
-                            }
+                    # Check if request was successful (indicates missing CSRF protection)
+                    if response.status in [200, 201, 302, 303]:
+                        standards = get_standards("CSRF")
+                        return Finding(
+                            type="CSRF",
+                            severity=Severity.MEDIUM,
+                            endpoint=form["action"] or url,
+                            description="Form lacks CSRF token protection",
+                            evidence=f"Form submitted successfully without CSRF token. Status: {response.status}",
+                            payload=str(form_data),
+                            remediation="Implement CSRF token validation for all state-changing operations",
+                            **standards,
+                        )
 
         except Exception as e:
             error_handler.handle_error(
@@ -201,7 +194,7 @@ class CSRFScanner(BaseScanner):
 
     async def _test_csrf_token_validation(
         self, url: str, form: Dict
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[Finding]:
         """
         Test CSRF token validation bypass.
 
@@ -265,9 +258,7 @@ class CSRFScanner(BaseScanner):
 
         return None
 
-    async def _test_referrer_bypass(
-        self, url: str, form: Dict
-    ) -> Optional[Dict[str, Any]]:
+    async def _test_referrer_bypass(self, url: str, form: Dict) -> Optional[Finding]:
         """
         Test for referrer header bypass vulnerability.
 
@@ -276,7 +267,7 @@ class CSRFScanner(BaseScanner):
             form: Form information dictionary
 
         Returns:
-            Dict: Vulnerability information if found, None otherwise
+            Optional[Finding]: Vulnerability information if found, None otherwise
         """
         try:
             # Prepare form data
@@ -284,33 +275,25 @@ class CSRFScanner(BaseScanner):
             for input_field in form["inputs"]:
                 form_data[input_field["name"]] = input_field["value"] or "test_value"
 
-            # Test with different referrer headers
-            test_headers = self.headers.copy()
-            test_headers["Referer"] = "https://evil.com"
-
-            if isinstance(self.timeout, aiohttp.ClientTimeout):
-                base = self.timeout.total or 0
-            else:
-                base = self.timeout
-            timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
-            async with aiohttp.ClientSession(
-                headers=test_headers, timeout=timeout_obj
-            ) as session:
-                if form["method"].lower() == "post":
-                    async with session.post(
-                        form["action"] or url, data=form_data, allow_redirects=False
-                    ) as response:
-                        if response.status in [200, 201, 302, 303]:
-                            return {
-                                "type": "CSRF",
-                                "severity": "Medium",
-                                "endpoint": form["action"] or url,
-                                "description": "Form accepts requests from external referrers",
-                                "evidence": f"Form submitted successfully with external referrer. Status: {response.status}",  # noqa
-                                "payload": f"Referrer: https://evil.com, Data: {form_data}",
-                                "remediation": "Implement proper referrer validation or use SameSite cookies",
-                                "confidence": "Medium",
-                            }
+            if form["method"].lower() == "post":
+                async with self.session.post(
+                    form["action"] or url,
+                    data=form_data,
+                    allow_redirects=False,
+                    headers={"Referer": "https://evil.com"},
+                ) as response:
+                    if response.status in [200, 201, 302, 303]:
+                        standards = get_standards("CSRF")
+                        return Finding(
+                            type="CSRF",
+                            severity=Severity.MEDIUM,
+                            endpoint=form["action"] or url,
+                            description="Form accepts requests from external referrers",
+                            evidence=f"Form submitted successfully with external referrer. Status: {response.status}",
+                            payload=f"Referrer: https://evil.com, Data: {form_data}",
+                            remediation="Implement proper referrer validation or use SameSite cookies",
+                            **standards,
+                        )
 
         except Exception as e:
             error_handler.handle_error(
@@ -322,7 +305,7 @@ class CSRFScanner(BaseScanner):
 
     async def _submit_csrf_test(
         self, url: str, form: Dict, test_data: Dict, test_type: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[Finding]:
         """
         Submit a CSRF test and check for vulnerability.
 
@@ -333,32 +316,25 @@ class CSRFScanner(BaseScanner):
             test_type: Type of test being performed
 
         Returns:
-            Dict: Vulnerability information if found, None otherwise
+            Optional[Finding]: Vulnerability information if found, None otherwise
         """
         try:
-            if isinstance(self.timeout, aiohttp.ClientTimeout):
-                base = self.timeout.total or 0
-            else:
-                base = self.timeout
-            timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=timeout_obj
-            ) as session:
-                if form["method"].lower() == "post":
-                    async with session.post(
-                        form["action"] or url, data=test_data, allow_redirects=False
-                    ) as response:
-                        if response.status in [200, 201, 302, 303]:
-                            return {
-                                "type": "CSRF",
-                                "severity": "Medium",
-                                "endpoint": form["action"] or url,
-                                "description": f"CSRF token validation bypass: {test_type}",
-                                "evidence": f"Form submitted successfully with {test_type.lower()}. Status: {response.status}",  # noqa
-                                "payload": str(test_data),
-                                "remediation": "Implement proper CSRF token validation",
-                                "confidence": "High",
-                            }
+            if form["method"].lower() == "post":
+                async with self.session.post(
+                    form["action"] or url, data=test_data, allow_redirects=False
+                ) as response:
+                    if response.status in [200, 201, 302, 303]:
+                        standards = get_standards("CSRF")
+                        return Finding(
+                            type="CSRF",
+                            severity=Severity.MEDIUM,
+                            endpoint=form["action"] or url,
+                            description=f"CSRF token validation bypass: {test_type}",
+                            evidence=f"Form submitted successfully with {test_type.lower()}. Status: {response.status}",
+                            payload=str(test_data),
+                            remediation="Implement proper CSRF token validation",
+                            **standards,
+                        )
 
         except Exception as e:
             error_handler.handle_error(

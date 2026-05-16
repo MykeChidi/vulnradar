@@ -8,6 +8,9 @@ from urllib.parse import urlencode
 
 import aiohttp
 
+from ..models.finding import Finding
+from ..models.severity import Severity
+from ..models.standards import get_standards
 from ..utils.error_handler import NetworkError, ScanError, get_global_error_handler
 from . import payloads
 from .base import BaseScanner
@@ -29,7 +32,7 @@ class XXEScanner(BaseScanner):
 
     # ── public: scan ──────────────────────────────────────────────────────
 
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Test a single URL for XXE injection.
 
@@ -45,7 +48,7 @@ class XXEScanner(BaseScanner):
           D. Billion Laughs (exponential entity expansion)
           E. External DTD (SSRF probe)
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
 
         try:
             # Test 1: XML body injection
@@ -128,13 +131,13 @@ class XXEScanner(BaseScanner):
 
     # ── private: XML body injection ───────────────────────────────────────
 
-    async def _test_xml_body(self, url: str) -> List[Dict]:
+    async def _test_xml_body(self, url: str) -> List[Finding]:
         """
         POST XML payloads directly to the endpoint with Content-Type: application/xml.
 
         This is the most common XXE vector — APIs that accept XML bodies.
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
         marker = self._generate_marker()
 
         # Test each payload type
@@ -193,56 +196,52 @@ class XXEScanner(BaseScanner):
                 evidence_text = "Server attempted to fetch external DTD (SSRF via XXE)"
 
             if vuln_detected:
-                findings.append(
-                    {
-                        "type": "XXE",
-                        "endpoint": url,
-                        "severity": severity,
-                        "description": (
-                            f"XML External Entity (XXE) injection detected via {description}. "
-                            f"The XML parser processed external entities in the POST body. "
-                            f"{evidence_text}."
+                findings.append(Finding(
+                    type="XXE",
+                    endpoint=url,
+                    severity=Severity.from_str(severity),
+                    description=(
+                        f"XML External Entity (XXE) injection detected via {description}. "
+                        f"The XML parser processed external entities in the POST body. "
+                        f"{evidence_text}."
+                    ),
+                    evidence=(
+                        f"POST {url} with Content-Type: application/xml and XXE payload "
+                        f"returned status {status}. {evidence_text}."
+                    ),
+                    remediation=(
+                        "Disable external entity processing in your XML parser. For most parsers: "
+                        "set XMLInputFactory.SUPPORT_DTD = false, "
+                        "XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES = false. "
+                        "For Python lxml: use defusedxml. For Java: disable DOCTYPE declarations. "
+                        "Never parse untrusted XML with entity resolution enabled."
+                    ),
+                    payload={
+                        "method": "POST",
+                        "target_url": url,
+                        "xml_payload": xml_payload,
+                        "injection_point": "body",
+                        "detection_type": detection_type,
+                        "marker": (
+                            marker if detection_type in ("oob", "external_dtd") else ""
                         ),
-                        "evidence": (
-                            f"POST {url} with Content-Type: application/xml and XXE payload "
-                            f"returned status {status}. {evidence_text}."
-                        ),
-                        "remediation": (
-                            "Disable external entity processing in your XML parser. For most parsers: "
-                            "set XMLInputFactory.SUPPORT_DTD = false, "
-                            "XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES = false. "
-                            "For Python lxml: use defusedxml. For Java: disable DOCTYPE declarations. "
-                            "Never parse untrusted XML with entity resolution enabled."
-                        ),
-                        "payload": json.dumps(
-                            {
-                                "method": "POST",
-                                "target_url": url,
-                                "xml_payload": xml_payload,
-                                "injection_point": "body",
-                                "detection_type": detection_type,
-                                "marker": (
-                                    marker
-                                    if detection_type in ("oob", "external_dtd")
-                                    else ""
-                                ),
-                            }
-                        ),
-                    }
+                    },
+                    method="POST",
+                    **get_standards("XXE"),
                 )
-                break  # one finding per endpoint is enough
+            )
 
         return findings
 
     # ── private: parameter injection ──────────────────────────────────────
 
-    async def _test_params(self, url: str, params: Dict[str, str]) -> List[Dict]:
+    async def _test_params(self, url: str, params: Dict[str, str]) -> List[Finding]:
         """
         Inject XML into URL parameters.
 
         Some APIs parse XML from GET parameters (rare but happens).
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
         marker = self._generate_marker()
 
         # Only test file disclosure and OOB (skip Billion Laughs — too risky in GET)
@@ -280,35 +279,33 @@ class XXEScanner(BaseScanner):
                     evidence_text = f"Response echoes marker '{marker}'"
 
                 if vuln_detected:
-                    findings.append(
-                        {
-                            "type": "XXE",
-                            "endpoint": url,
-                            "severity": severity,
-                            "description": (
-                                f"XXE injection detected in URL parameter '{param_name}' via {description}. "
-                                f"{evidence_text}."
-                            ),
-                            "evidence": (
-                                f"GET {url}?{param_name}=<xml> returned status {status}. {evidence_text}."
-                            ),
-                            "remediation": (
-                                "Disable external entity processing in your XML parser. "
-                                "Do not parse XML from GET parameters unless absolutely necessary."
-                            ),
-                            "payload": json.dumps(
-                                {
-                                    "method": "GET",
-                                    "target_url": url,
-                                    "xml_payload": xml_payload,
-                                    "injection_point": "param",
-                                    "param_name": param_name,
-                                    "detection_type": detection_type,
-                                    "marker": marker if detection_type == "oob" else "",
-                                }
-                            ),
-                        }
-                    )
+                    findings.append(Finding(
+                        type="XXE",
+                        endpoint=url,
+                        severity=Severity.from_str(severity),
+                        description=(
+                            f"XXE injection detected in URL parameter '{param_name}' via {description}. "
+                            f"{evidence_text}."
+                        ),
+                        evidence=(
+                            f"GET {url}?{param_name}=<xml> returned status {status}. {evidence_text}."
+                        ),
+                        remediation=(
+                            "Disable external entity processing in your XML parser. "
+                            "Do not parse XML from GET parameters unless absolutely necessary."
+                        ),
+                        payload={
+                            "method": "GET",
+                            "target_url": url,
+                            "xml_payload": xml_payload,
+                            "injection_point": "param",
+                            "param_name": param_name,
+                            "detection_type": detection_type,
+                            "marker": marker if detection_type == "oob" else "",
+                        },
+                        method="GET",
+                        **get_standards("XXE"),
+                    ))
                     break  # one finding per param is enough
 
             if findings:
@@ -318,14 +315,14 @@ class XXEScanner(BaseScanner):
 
     # ── private: form injection ───────────────────────────────────────────
 
-    async def _test_form(self, page_url: str, form: Dict) -> List[Dict]:
+    async def _test_form(self, page_url: str, form: Dict) -> List[Finding]:
         """
         Inject XML into form fields (text inputs and file uploads).
 
         File uploads are especially dangerous — many apps parse uploaded XML
         files without proper entity protection.
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
         marker = self._generate_marker()
 
         action = form["action"]
@@ -355,37 +352,35 @@ class XXEScanner(BaseScanner):
             status, body = result
 
             if marker in body.lower():
-                findings.append(
-                    {
-                        "type": "XXE",
-                        "endpoint": action,
-                        "severity": "High",
-                        "description": (
-                            f"XXE injection detected in form field '{field_name}'. "
-                            f"Response echoes unique marker '{marker}', proving the XML was parsed "
-                            f"and external entities were resolved."
-                        ),
-                        "evidence": (
-                            f"POST {action} with {field_name}=<xml> returned status {status}. "
-                            f"Response contains marker string."
-                        ),
-                        "remediation": (
-                            "Disable external entity processing in your XML parser. "
-                            "Do not parse XML from form inputs unless absolutely necessary."
-                        ),
-                        "payload": json.dumps(
-                            {
-                                "method": "POST",
-                                "target_url": action,
-                                "xml_payload": xml_payload,
-                                "injection_point": "param",
-                                "param_name": field_name,
-                                "detection_type": "oob",
-                                "marker": marker,
-                            }
-                        ),
-                    }
-                )
+                findings.append(Finding(
+                    type="XXE",
+                    endpoint=action,
+                    severity=Severity.HIGH,
+                    description=(
+                        f"XXE injection detected in form field '{field_name}'. "
+                        f"Response echoes unique marker '{marker}', proving the XML was parsed "
+                        f"and external entities were resolved."
+                    ),
+                    evidence=(
+                        f"POST {action} with {field_name}=<xml> returned status {status}. "
+                        f"Response contains marker string."
+                    ),
+                    remediation=(
+                        "Disable external entity processing in your XML parser. "
+                        "Do not parse XML from form inputs unless absolutely necessary."
+                    ),
+                    payload={
+                        "method": "POST",
+                        "target_url": action,
+                        "xml_payload": xml_payload,
+                        "injection_point": "param",
+                        "param_name": field_name,
+                        "detection_type": "oob",
+                        "marker": marker,
+                    },
+                    method="POST",
+                    **get_standards("XXE"),
+                ))
                 break  # one finding per form is enough
 
         # Test file uploads
@@ -442,12 +437,11 @@ class XXEScanner(BaseScanner):
             xml_headers = dict(self.headers)
             xml_headers["Content-Type"] = "application/xml"
 
-            async with aiohttp.ClientSession(
-                headers=xml_headers, timeout=self.timeout
-            ) as session:
-                async with session.post(url, data=xml.encode("utf-8")) as response:
-                    body = await self._safe_read(response)
-                    return (response.status, body)
+            async with self.session.post(
+                url, data=xml.encode("utf-8"), headers=xml_headers
+            ) as response:
+                body = await self._safe_read(response)
+                return (response.status, body)
 
         except (aiohttp.ClientError, TimeoutError) as e:
             error_handler.handle_error(
@@ -463,12 +457,11 @@ class XXEScanner(BaseScanner):
     ) -> Optional[Tuple[int, str]]:
         """POST a form.  Returns (status, body) or None."""
         try:
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=self.timeout
-            ) as session:
-                async with session.post(url, data=data) as response:
-                    body = await self._safe_read(response)
-                    return (response.status, body)
+            async with self.session.post(
+                url, data=data, headers=self.headers
+            ) as response:
+                body = await self._safe_read(response)
+                return (response.status, body)
 
         except (aiohttp.ClientError, TimeoutError) as e:
             error_handler.handle_error(
@@ -489,12 +482,9 @@ class XXEScanner(BaseScanner):
                 f"{url}?{query_string}" if "?" not in url else f"{url}&{query_string}"
             )
 
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=self.timeout
-            ) as session:
-                async with session.get(full_url) as response:
-                    body = await self._safe_read(response)
-                    return (response.status, body)
+            async with self.session.get(full_url, headers=self.headers) as response:
+                body = await self._safe_read(response)
+                return (response.status, body)
 
         except (aiohttp.ClientError, TimeoutError) as e:
             error_handler.handle_error(

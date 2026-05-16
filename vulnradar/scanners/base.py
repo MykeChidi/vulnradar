@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 import aiohttp
 from bs4 import BeautifulSoup
 
+from ..models.finding import Finding
 from ..utils.error_handler import ParseError, ValidationError, get_global_error_handler
 
 if TYPE_CHECKING:
@@ -58,7 +59,7 @@ class BaseScanner(abc.ABC):
         return self._context.session
 
     @abc.abstractmethod
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Scan a URL for vulnerabilities.
 
@@ -66,7 +67,7 @@ class BaseScanner(abc.ABC):
             url: URL to scan
 
         Returns:
-            List[Dict]: List of vulnerability findings
+            List[Finding]: List of vulnerability findings
         """
         pass
 

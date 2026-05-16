@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Dict, Optional, Union
 
 from .severity import Severity
 
@@ -30,10 +30,11 @@ class Finding:
     method: str = "GET"
 
     # Evidence
-    payload: Optional[str] = None
+    payload: Optional[Union[str, Dict[str, Any]]] = None
     evidence: str = ""
     description: str = ""
     remediation: str = ""
+    subtype: Optional[str] = None
 
     # Standards mapping — populated by models/standards.py get_standards()
     cvss_score: Optional[float] = None
@@ -43,6 +44,7 @@ class Finding:
     # Metadata
     tags: list[str] = field(default_factory=list)
     scan_id: Optional[str] = None
+    _working_credential: Optional[tuple[str, str]] = None
 
     def to_dict(self) -> dict:
         """Serialise to a plain dict for JSON output, DB storage, and report templates."""
@@ -57,6 +59,7 @@ class Finding:
             "evidence": self.evidence,
             "description": self.description,
             "remediation": self.remediation,
+            "subtype": self.subtype,
             "cvss_score": self.cvss_score,
             "cwe_id": self.cwe_id,
             "owasp_category": self.owasp_category,

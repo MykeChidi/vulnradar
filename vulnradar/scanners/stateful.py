@@ -16,31 +16,25 @@ class StatefulScanner(BaseScanner):
 
     def __init__(self, headers: Optional[Dict] = None, timeout: int = 10):
         super().__init__(headers=headers, timeout=timeout)
-        self._session: Optional[aiohttp.ClientSession] = None
 
     # ── session lifecycle ─────────────────────────────────────────────────
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """
-        Return the live session, creating it on first call.
+        Return the shared session from the attached ScanContext.
 
-        Subsequent calls within the same scan run return the same object —
-        cookies set by the server accumulate automatically via the jar.
-        Call _close_session() when the multi-step flow is finished.
+        Stateful scanners still need a persistent session for multi-step
+        flows, but they must reuse the shared session provided by core.
         """
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(
-                headers=self.headers,
-                timeout=self.timeout,
-                cookie_jar=aiohttp.CookieJar(),
-            )
-        return self._session
+        return self.session
 
     async def _close_session(self) -> None:
-        """Close and discard the current session.  Safe to call multiple times."""
-        if self._session and not self._session.closed:
-            await self._session.close()
-        self._session = None
+        """Reset cookies on the shared session so the next flow starts fresh."""
+        if self._context is not None and self._context.session is not None:
+            try:
+                self.session.cookie_jar.clear()
+            except Exception:
+                pass
 
     # ── stateful request helpers ──────────────────────────────────────────
     # These mirror BaseScanner's patterns but route through the persistent

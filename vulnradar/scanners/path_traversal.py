@@ -7,6 +7,9 @@ from typing import Dict, List, Optional
 
 import aiohttp
 
+from ..models.finding import Finding
+from ..models.severity import Severity
+from ..models.standards import get_standards
 from ..utils.error_handler import (
     ScanError,
     get_global_error_handler,
@@ -39,7 +42,7 @@ class PathTraversalScanner(BaseScanner):
         user_message="Path traversal scan encountered an error",
         return_on_error=[],
     )
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Scan a URL for path traversal vulnerabilities.
 
@@ -47,9 +50,9 @@ class PathTraversalScanner(BaseScanner):
             url: URL to scan
 
         Returns:
-            List[Dict]: List of vulnerability findings
+            List[Finding]: List of vulnerability findings
         """
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
         try:
             # Test URL parameters
             url_vulns = await self._test_url_parameters(url)
@@ -74,9 +77,9 @@ class PathTraversalScanner(BaseScanner):
 
         return vulnerabilities
 
-    async def _test_url_parameters(self, url: str) -> List[Dict]:
+    async def _test_url_parameters(self, url: str) -> List[Finding]:
         """Test URL parameters for path traversal vulnerabilities."""
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
 
         # Extract existing parameters
         params = await self._extract_parameters(url)
@@ -98,9 +101,9 @@ class PathTraversalScanner(BaseScanner):
 
         return vulnerabilities
 
-    async def _test_form_inputs(self, url: str) -> List[Dict]:
+    async def _test_form_inputs(self, url: str) -> List[Finding]:
         """Test form inputs for path traversal vulnerabilities."""
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
 
         forms = await self._get_form_inputs(url)
 
@@ -115,9 +118,9 @@ class PathTraversalScanner(BaseScanner):
 
         return vulnerabilities
 
-    async def _test_file_access(self, url: str) -> List[Dict]:
+    async def _test_file_access(self, url: str) -> List[Finding]:
         """Test common file access patterns."""
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
 
         # Test direct file access attempts
         base_url = url.rstrip("/")
@@ -167,9 +170,9 @@ class PathTraversalScanner(BaseScanner):
 
     async def _test_parameter(
         self, url: str, param_name: str, original_value: str
-    ) -> List[Dict]:
+    ) -> List[Finding]:
         """Test a specific parameter for path traversal vulnerabilities."""
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
 
         for payload in self.payloads:
             try:
@@ -206,43 +209,35 @@ class PathTraversalScanner(BaseScanner):
                         )
                     )
 
-                    if isinstance(self.timeout, aiohttp.ClientTimeout):
-                        base = self.timeout.total or 0
-                    else:
-                        base = self.timeout
-                    timeout_obj = aiohttp.ClientTimeout(
-                        total=base, connect=5, sock_read=base
-                    )
-                    async with aiohttp.ClientSession(
-                        headers=self.headers, timeout=timeout_obj
-                    ) as session:
-                        async with session.get(test_url) as response:
-                            response_text = await self._safe_read(response)
+                    async with self.session.get(test_url) as response:
+                        response_text = await self._safe_read(response)
 
-                            # Check for path traversal indicators
-                            if await self._detect_path_traversal(
-                                response_text, test_payload
-                            ):
-                                vulnerabilities.append(
-                                    {
-                                        "type": "Path Traversal",
-                                        "severity": "High",
-                                        "endpoint": test_url,
-                                        "parameter": param_name,
-                                        "payload": test_payload,
-                                        "evidence": await self._extract_evidence(
-                                            response_text
-                                        ),
-                                        "description": f"Path traversal vulnerability found in parameter '{param_name}'."  # noqa
-                                        "The application allows access to files outside the "
-                                        "intended directory through directory traversal sequences.",
-                                        "remediation": "Implement proper input validation and sanitization. "
-                                        "Use whitelisting for allowed file paths. "
-                                        "Canonicalize file paths and check against allowed directories. "
-                                        "Use secure file access APIs that prevent directory traversal.",
-                                    }
+                        # Check for path traversal indicators
+                        if await self._detect_path_traversal(
+                            response_text, test_payload
+                        ):
+                            standards = get_standards("Path Traversal")
+                            vulnerabilities.append(
+                                Finding(
+                                    type="Path Traversal",
+                                    severity=Severity.HIGH,
+                                    endpoint=test_url,
+                                    parameter=param_name,
+                                    payload=test_payload,
+                                    evidence=await self._extract_evidence(
+                                        response_text
+                                    ),
+                                    description=f"Path traversal vulnerability found in parameter '{param_name}'. "
+                                    "The application allows access to files outside the "
+                                    "intended directory through directory traversal sequences.",
+                                    remediation="Implement proper input validation and sanitization. "
+                                    "Use whitelisting for allowed file paths. "
+                                    "Canonicalize file paths and check against allowed directories. "
+                                    "Use secure file access APIs that prevent directory traversal.",
+                                    **standards,
                                 )
-                                break  # Found vulnerability, no need to test more payloads for this parameter
+                            )
+                            break  # Found vulnerability, no need to test more payloads for this parameter
 
             except (aiohttp.ClientError, asyncio.TimeoutError):
                 continue
@@ -251,9 +246,9 @@ class PathTraversalScanner(BaseScanner):
 
     async def _test_form_field(
         self, url: str, form: Dict, input_field: Dict
-    ) -> List[Dict]:
+    ) -> List[Finding]:
         """Test a form field for path traversal vulnerabilities."""
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
 
         for payload in self.payloads[
             :20
@@ -277,50 +272,38 @@ class PathTraversalScanner(BaseScanner):
                             form_data[field["name"]] = field["value"] or "test"
 
                     # Submit form
-                    if isinstance(self.timeout, aiohttp.ClientTimeout):
-                        base = self.timeout.total or 0
+                    if form["method"] == "post":
+                        async with self.session.post(
+                            form["action"], data=form_data
+                        ) as response:
+                            response_text = await self._safe_read(response)
                     else:
-                        base = self.timeout
-                    timeout_obj = aiohttp.ClientTimeout(
-                        total=base, connect=5, sock_read=base
-                    )
-                    async with aiohttp.ClientSession(
-                        headers=self.headers, timeout=timeout_obj
-                    ) as session:
-                        if form["method"] == "post":
-                            async with session.post(
-                                form["action"], data=form_data
-                            ) as response:
-                                response_text = await self._safe_read(response)
-                        else:
-                            async with session.get(
-                                form["action"], params=form_data
-                            ) as response:
-                                response_text = await self._safe_read(response)
+                        async with self.session.get(
+                            form["action"], params=form_data
+                        ) as response:
+                            response_text = await self._safe_read(response)
 
-                        # Check for path traversal indicators
-                        if await self._detect_path_traversal(
-                            response_text, test_payload
-                        ):
-                            vulnerabilities.append(
-                                {
-                                    "type": "Path Traversal",
-                                    "severity": "High",
-                                    "endpoint": form["action"],
-                                    "parameter": input_field["name"],
-                                    "payload": test_payload,
-                                    "evidence": await self._extract_evidence(
-                                        response_text
-                                    ),
-                                    "description": f"Path traversal vulnerability found in form field '{input_field['name']}'."  # noqa
-                                    "The application allows access to files outside the intended directory "
-                                    "through directory traversal sequences.",
-                                    "remediation": "Implement proper input validation and sanitization. "
-                                    "Use whitelisting for allowed file paths. "
-                                    "Canonicalize file paths and check against allowed directories.",
-                                }
+                    # Check for path traversal indicators
+                    if await self._detect_path_traversal(response_text, test_payload):
+                        standards = get_standards("Path Traversal")
+                        vulnerabilities.append(
+                            Finding(
+                                type="Path Traversal",
+                                severity=Severity.HIGH,
+                                endpoint=form["action"],
+                                parameter=input_field["name"],
+                                payload=test_payload,
+                                evidence=await self._extract_evidence(response_text),
+                                description=f"Path traversal vulnerability found in form field '{input_field['name']}'."  # noqa
+                                "The application allows access to files outside the intended directory "
+                                "through directory traversal sequences.",
+                                remediation="Implement proper input validation and sanitization. "
+                                "Use whitelisting for allowed file paths. "
+                                "Canonicalize file paths and check against allowed directories.",
+                                **standards,
                             )
-                            break  # Found vulnerability, no need to test more payloads
+                        )
+                        break  # Found vulnerability, no need to test more payloads
 
             except (aiohttp.ClientError, asyncio.TimeoutError):
                 continue
@@ -441,19 +424,11 @@ class PathTraversalScanner(BaseScanner):
         """
         try:
             # Re-test the specific payload
-            if isinstance(self.timeout, aiohttp.ClientTimeout):
-                base = self.timeout.total
-            else:
-                base = self.timeout
-            timeout = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=timeout
-            ) as session:
-                async with session.get(url) as response:
-                    response_text = await self._safe_read(response)
+            async with self.session.get(url) as response:
+                response_text = await self._safe_read(response)
 
-                    # Check if we still get the same indicators
-                    return await self._detect_path_traversal(response_text, payload)
+                # Check if we still get the same indicators
+                return await self._detect_path_traversal(response_text, payload)
 
         except (aiohttp.ClientError, asyncio.TimeoutError):
             return False

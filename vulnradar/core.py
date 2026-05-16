@@ -548,7 +548,6 @@ class VulnRadar:
 
     async def run_vulnerability_scans(self) -> None:
         """Run all selected vulnerability scans."""
-        scanners: List[BaseScanner] = []
 
         # Build the list of scanners from the registry.
         # Adding a new scanner only requires a line in registry.py — nothing here changes.
@@ -613,8 +612,8 @@ class VulnRadar:
 
                     for i in range(0, len(self.results["endpoints"]), batch_size):
                         batch = self.results["endpoints"][
-                            i : i + batch_size
-                        ]  # noqa: E203
+                            i : i + batch_size  # noqa: E203
+                        ]
 
                         tasks = []
                         for endpoint in batch:

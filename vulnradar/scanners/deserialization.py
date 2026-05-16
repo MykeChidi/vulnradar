@@ -7,12 +7,14 @@ from urllib.parse import urlparse
 
 import aiohttp
 
+from ..models.finding import Finding
+from ..models.severity import Severity
+from ..models.standards import get_standards
 from ..utils.error_handler import (
     NetworkError,
     ScanError,
     get_global_error_handler,
 )
-from ..utils.logger import setup_logger
 from . import payloads
 from .base import BaseScanner
 
@@ -420,7 +422,10 @@ class _PHPEngine(_FormatEngine):
         """Check if any cookie value looks like a PHP serialised structure."""
         for cookie_val in cookies:
             encoded = cookie_val.encode("utf-8", errors="replace")
-            if any(encoded.startswith(prefix) for prefix in payloads.deserialization_php_serial_prefixes):
+            if any(
+                encoded.startswith(prefix)
+                for prefix in payloads.deserialization_php_serial_prefixes
+            ):
                 return 0.9
         return 0.0
 
@@ -650,7 +655,7 @@ class InsecureDeserializationScanner(BaseScanner):
     def __init__(self, headers: Optional[Dict] = None, timeout: int = 10):
         super().__init__(headers=headers, timeout=timeout)
 
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Two-phase scan of a single URL.
 
@@ -659,7 +664,7 @@ class InsecureDeserializationScanner(BaseScanner):
         Phase 2: for every engine that cleared the threshold, submit
                  its payloads and check for deserialisation evidence.
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
 
         try:
             # ── Phase 1: fingerprint ──────────────────────────────────────
@@ -806,14 +811,14 @@ class InsecureDeserializationScanner(BaseScanner):
         url: str,
         engine: _FormatEngine,
         original_headers: Dict[str, str],
-    ) -> List[Dict]:
+    ) -> List[Finding]:
         """
         Submit every payload this engine has and collect findings.
 
         Each payload is submitted independently.  If the response shows
         evidence of deserialisation, a finding is recorded.
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
 
         for payload in engine.build_payloads():
             try:
@@ -862,52 +867,46 @@ class InsecureDeserializationScanner(BaseScanner):
         Returns (status, body_text, headers_dict).  status is None on failure.
         """
         try:
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=self.timeout
-            ) as session:
+            submit_as = payload["submit_as"]
+            data_raw = payload["data"]
 
-                submit_as = payload["submit_as"]
-                data_raw = payload["data"]
+            # Normalise data to bytes
+            if isinstance(data_raw, str):
+                data_bytes = data_raw.encode("utf-8")
+            else:
+                data_bytes = data_raw
 
-                # Normalise data to bytes
-                if isinstance(data_raw, str):
-                    data_bytes = data_raw.encode("utf-8")
-                else:
-                    data_bytes = data_raw
+            if submit_as == "body":
+                ct = payload.get("content_type", "application/octet-stream")
+                post_headers = {**self.headers, "Content-Type": ct}
+                async with self.session.post(
+                    url, data=data_bytes, headers=post_headers
+                ) as resp:
+                    body = await resp.text()
+                    return (resp.status, body, dict(resp.headers))
 
-                if submit_as == "body":
-                    ct = payload.get("content_type", "application/octet-stream")
-                    post_headers = {**self.headers, "Content-Type": ct}
-                    async with session.post(
-                        url, data=data_bytes, headers=post_headers
-                    ) as resp:
-                        body = await resp.text()
-                        return (resp.status, body, dict(resp.headers))
+            elif submit_as == "cookie":
+                cookie_name = payload.get("cookie_name", "session")
+                # data may be bytes (base64-encoded) — decode to str for cookie
+                cookie_val = data_bytes.decode("ascii", errors="replace")
+                cookie_header = {
+                    **self.headers,
+                    "Cookie": f"{cookie_name}={cookie_val}",
+                }
+                async with self.session.get(url, headers=cookie_header) as resp:
+                    body = await resp.text()
+                    return (resp.status, body, dict(resp.headers))
 
-                elif submit_as == "cookie":
-                    cookie_name = payload.get("cookie_name", "session")
-                    # data may be bytes (base64-encoded) — decode to str for cookie
-                    cookie_val = data_bytes.decode("ascii", errors="replace")
-                    cookie_header = {
-                        **self.headers,
-                        "Cookie": f"{cookie_name}={cookie_val}",
-                    }
-                    async with session.get(url, headers=cookie_header) as resp:
-                        body = await resp.text()
-                        return (resp.status, body, dict(resp.headers))
+            elif submit_as == "parameter":
+                param_name = payload.get("param_name", "data")
+                # PHP payloads are ASCII text — send as form data
+                form_data = {param_name: data_bytes.decode("utf-8", errors="replace")}
+                async with self.session.post(url, data=form_data) as resp:
+                    body = await resp.text()
+                    return (resp.status, body, dict(resp.headers))
 
-                elif submit_as == "parameter":
-                    param_name = payload.get("param_name", "data")
-                    # PHP payloads are ASCII text — send as form data
-                    form_data = {
-                        param_name: data_bytes.decode("utf-8", errors="replace")
-                    }
-                    async with session.post(url, data=form_data) as resp:
-                        body = await resp.text()
-                        return (resp.status, body, dict(resp.headers))
-
-                else:
-                    return (None, "", {})
+            else:
+                return (None, "", {})
 
         except (aiohttp.ClientError, TimeoutError) as e:
             error_handler.handle_error(
@@ -927,7 +926,7 @@ class InsecureDeserializationScanner(BaseScanner):
         payload: Dict,
         resp_status: int,
         resp_body: str,
-    ) -> Dict:
+    ) -> Finding:
         """
         Assemble a finding dict with exactly the keys core.py expects.
 
@@ -937,20 +936,20 @@ class InsecureDeserializationScanner(BaseScanner):
         # Truncate the response body in evidence to avoid bloating the DB
         evidence_body = resp_body[:300] if len(resp_body) > 300 else resp_body
 
-        return {
-            "type": "Insecure Deserialization",
-            "endpoint": url,
-            "severity": "Critical",
-            "description": (
+        return Finding(
+            type="Insecure Deserialization",
+            endpoint=url,
+            severity=Severity.CRITICAL,
+            description=(
                 f"Insecure deserialisation detected ({engine.FORMAT_NAME.title()}): "
                 f"{payload['name']} — server processed a crafted serialised object"
             ),
-            "evidence": (
+            evidence=(
                 f"Submitted '{payload['name']}' via {payload['submit_as']} to {url}. "
                 f"Server responded with status {resp_status}. "
                 f"Response body contains deserialisation indicators:\n{evidence_body}"
             ),
-            "remediation": (
+            remediation=(
                 f"Do not deserialise {engine.FORMAT_NAME.title()} data from untrusted sources. "
                 f"If deserialisation is required, use a whitelist of allowed classes and "
                 f"validate the input before processing. "
@@ -958,7 +957,7 @@ class InsecureDeserializationScanner(BaseScanner):
                 f"For Python: never use pickle on user-supplied data — use JSON instead. "
                 f"For PHP: avoid unserialize() on user input — use json_decode() instead."
             ),
-            "payload": json.dumps(
+            payload=json.dumps(
                 {
                     "engine": engine.FORMAT_NAME,
                     "payload_name": payload["name"],
@@ -967,4 +966,5 @@ class InsecureDeserializationScanner(BaseScanner):
                     "param_name": payload.get("param_name"),
                 }
             ),
-        }
+            **get_standards("Insecure Deserialization"),
+        )

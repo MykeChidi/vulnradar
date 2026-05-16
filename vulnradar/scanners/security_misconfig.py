@@ -6,10 +6,12 @@ from urllib.parse import urlparse
 
 import aiohttp
 
+from ..models.finding import Finding
+from ..models.severity import Severity
+from ..models.standards import get_standards
 from ..utils.error_handler import NetworkError, ScanError, get_global_error_handler
 from . import payloads
 from .base import BaseScanner
-from . import payloads
 
 error_handler = get_global_error_handler()
 
@@ -19,7 +21,6 @@ error_handler = get_global_error_handler()
 #
 # Sensitive paths, file lists, and header checks are imported from payloads module
 # ─────────────────────────────────────────────────────────────────────────────
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -158,7 +159,7 @@ class SecurityMisconfigScanner(BaseScanner):
 
     # ── public: scan ──────────────────────────────────────────────────────
 
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Run all misconfig checks against a single URL.
 
@@ -166,7 +167,7 @@ class SecurityMisconfigScanner(BaseScanner):
         are anchored to scheme://host — not to whatever sub-path scan()
         was called with.
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
         origin = self._extract_origin(url)
 
         try:
@@ -234,12 +235,16 @@ class SecurityMisconfigScanner(BaseScanner):
 
             elif check == "directory_listing":
                 body_lo = body.lower()
-                return any(ind in body_lo for ind in payloads.security_misconfig_dir_listing_indicators)
+                return any(
+                    ind in body_lo
+                    for ind in payloads.security_misconfig_dir_listing_indicators
+                )
 
             elif check == "verbose_errors":
                 body_lo = body.lower()
                 return any(
-                    pattern in body_lo for pattern, _ in payloads.security_misconfig_verbose_error_indicators
+                    pattern in body_lo
+                    for pattern, _ in payloads.security_misconfig_verbose_error_indicators
                 )
 
             elif check in ("exposed_file", "admin_panel", "test_file", "api_docs"):
@@ -255,53 +260,57 @@ class SecurityMisconfigScanner(BaseScanner):
 
     # ─── check 1: security headers ────────────────────────────────────────
 
-    def _check_security_headers(self, url: str, headers: Dict[str, str]) -> List[Dict]:
+    def _check_security_headers(
+        self, url: str, headers: Dict[str, str]
+    ) -> List[Finding]:
         """
         Run every header check in _HEADER_CHECKS.
 
         Each failed check is an independent finding.  Fixing one header
         should not require a re-scan to see the others.
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
 
         for header_name, check_fn, severity, missing_desc in _HEADER_CHECKS:
             passed, detail = check_fn(headers.get(header_name))
             if passed:
                 continue
 
+            standards = get_standards("Security Misconfiguration")
             findings.append(
-                {
-                    "type": "Security Misconfiguration",
-                    "endpoint": url,
-                    "severity": severity,
-                    "description": (
+                Finding(
+                    type="Security Misconfiguration",
+                    endpoint=url,
+                    severity=Severity.from_str(severity),
+                    description=(
                         f"Missing or weak security header: {header_name}. "
                         f"{missing_desc}."
                     ),
-                    "evidence": (
-                        f"Response from {url} — {header_name} check: {detail}."
-                    ),
-                    "remediation": (
+                    evidence=(f"Response from {url} — {header_name} check: {detail}."),
+                    remediation=(
                         f"Add or correct the {header_name} header on all responses from "
                         f"this origin. See the OWASP Secure Headers Project for "
                         f"recommended values: "
                         f"https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Strict_Transport_Security_Cheat_Sheet.html"  # noqa
                     ),
-                    "payload": json.dumps(
+                    payload=json.dumps(
                         {
                             "check": "security_headers",
                             "probe_url": url,
                             "header_name": header_name,
                         }
                     ),
-                }
+                    **standards,
+                )
             )
 
         return findings
 
     # ─── check 2: directory listing ────────────────────────────────────────
 
-    def _check_directory_listing(self, url: str, status: int, body: str) -> List[Dict]:
+    def _check_directory_listing(
+        self, url: str, status: int, body: str
+    ) -> List[Finding]:
         """
         Detect server-generated directory indexes.
 
@@ -314,40 +323,42 @@ class SecurityMisconfigScanner(BaseScanner):
         body_lo = body.lower()
         for indicator in payloads.security_misconfig_dir_listing_indicators:
             if indicator in body_lo:
+                standards = get_standards("Security Misconfiguration")
                 return [
-                    {
-                        "type": "Security Misconfiguration",
-                        "endpoint": url,
-                        "severity": "High",
-                        "description": (
+                    Finding(
+                        type="Security Misconfiguration",
+                        endpoint=url,
+                        severity=Severity.HIGH,
+                        description=(
                             "Directory listing is enabled. The server renders file and "
                             "folder names in the response, exposing the site structure."
                         ),
-                        "evidence": (
+                        evidence=(
                             f"Response from {url} (status 200) contains the directory-listing "
                             f"indicator: '{indicator}'."
                         ),
-                        "remediation": (
+                        remediation=(
                             "Disable directory listing in your web-server configuration. "
                             "Apache: set 'Options -Indexes' in the relevant Directory block. "
                             "Nginx: remove 'autoindex on;'. "
                             "Always serve an explicit index document or return 403 for "
                             "paths that have no one."
                         ),
-                        "payload": json.dumps(
+                        payload=json.dumps(
                             {
                                 "check": "directory_listing",
                                 "probe_url": url,
                             }
                         ),
-                    }
+                        **standards,
+                    )
                 ]
 
         return []
 
     # ─── check 3: verbose error pages ─────────────────────────────────────
 
-    def _check_verbose_errors(self, url: str, status: int, body: str) -> List[Dict]:
+    def _check_verbose_errors(self, url: str, status: int, body: str) -> List[Finding]:
         """
         Detect stack traces and internal exception details.
 
@@ -368,39 +379,41 @@ class SecurityMisconfigScanner(BaseScanner):
         if not matched:
             return []
 
+        standards = get_standards("Security Misconfiguration")
         return [
-            {
-                "type": "Security Misconfiguration",
-                "endpoint": url,
-                "severity": "Medium",
-                "description": (
+            Finding(
+                type="Security Misconfiguration",
+                endpoint=url,
+                severity=Severity.MEDIUM,
+                description=(
                     "Verbose error page discloses internal stack trace or exception "
                     "details. This information aids attackers in mapping application "
                     "internals, library versions, and file paths."
                 ),
-                "evidence": (
+                evidence=(
                     f"Response from {url} (status {status}) contains: "
                     + ", ".join(matched)
                     + "."
                 ),
-                "remediation": (
+                remediation=(
                     "Configure custom error pages for all 4xx and 5xx status codes. "
                     "Never expose stack traces, exception class names, or internal file "
                     "paths to end users in production. Set DEBUG=False (Django/Flask), "
                     "or the equivalent flag for your framework."
                 ),
-                "payload": json.dumps(
+                payload=json.dumps(
                     {
                         "check": "verbose_errors",
                         "probe_url": url,
                     }
                 ),
-            }
+                **standards,
+            )
         ]
 
     # ─── check 4: exposed sensitive files ─────────────────────────────────
 
-    async def _check_exposed_files(self, origin: str) -> List[Dict]:
+    async def _check_exposed_files(self, origin: str) -> List[Finding]:
         """
         Probe every path in the credential, .git, and backup lists.
 
@@ -408,9 +421,13 @@ class SecurityMisconfigScanner(BaseScanner):
         redirect stub pages and empty responses that some servers return
         with a 200 status.
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
 
-        for file_list in (payloads.security_misconfig_credential_files, payloads.security_misconfig_git_exposure, payloads.security_misconfig_backup_files):
+        for file_list in (
+            payloads.security_misconfig_credential_files,
+            payloads.security_misconfig_git_exposure,
+            payloads.security_misconfig_backup_files,
+        ):
             for path, severity, description in file_list:
                 probe_url = f"{origin}/{path}"
                 result = await self._probe_path(probe_url)
@@ -423,36 +440,38 @@ class SecurityMisconfigScanner(BaseScanner):
 
                 # Truncate body in evidence to keep findings compact
                 body_preview = resp_body[:200]
+                standards = get_standards("Security Misconfiguration")
 
                 findings.append(
-                    {
-                        "type": "Security Misconfiguration",
-                        "endpoint": probe_url,
-                        "severity": severity,
-                        "description": f"Exposed sensitive file: {path} — {description}.",
-                        "evidence": (
+                    Finding(
+                        type="Security Misconfiguration",
+                        endpoint=probe_url,
+                        severity=Severity.from_str(severity),
+                        description=f"Exposed sensitive file: {path} — {description}.",
+                        evidence=(
                             f"GET {probe_url} returned status 200 with {len(resp_body)} bytes. "
                             f"Body preview: {body_preview}"
                         ),
-                        "remediation": (
+                        remediation=(
                             f"Remove or deny access to {path}. Add it to your web-server "
                             f"deny rules and to .gitignore. Audit your deployment pipeline "
                             f"to ensure sensitive files are never copied into the document root."
                         ),
-                        "payload": json.dumps(
+                        payload=json.dumps(
                             {
                                 "check": "exposed_file",
                                 "probe_url": probe_url,
                             }
                         ),
-                    }
+                        **standards,
+                    )
                 )
 
         return findings
 
     # ─── check 5: default admin panels ────────────────────────────────────
 
-    async def _check_admin_panels(self, origin: str) -> List[Dict]:
+    async def _check_admin_panels(self, origin: str) -> List[Finding]:
         """
         Probe well-known admin-panel paths.
 
@@ -460,7 +479,7 @@ class SecurityMisconfigScanner(BaseScanner):
         reachable without prior authentication at the network level.
         A 401/403 means access control is in place — not a finding.
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
 
         for path, severity, description in payloads.security_misconfig_admin_panels:
             probe_url = f"{origin}/{path}"
@@ -472,40 +491,42 @@ class SecurityMisconfigScanner(BaseScanner):
             if resp_status != 200 or len(resp_body) <= 50:
                 continue
 
+            standards = get_standards("Security Misconfiguration")
             findings.append(
-                {
-                    "type": "Security Misconfiguration",
-                    "endpoint": probe_url,
-                    "severity": severity,
-                    "description": f"Default admin panel is accessible: {path} — {description}.",
-                    "evidence": (
+                Finding(
+                    type="Security Misconfiguration",
+                    endpoint=probe_url,
+                    severity=Severity.from_str(severity),
+                    description=f"Default admin panel is accessible: {path} — {description}.",
+                    evidence=(
                         f"GET {probe_url} returned status 200 with {len(resp_body)} bytes of content."
                     ),
-                    "remediation": (
+                    remediation=(
                         "Move the admin panel to a non-default, non-guessable path. "
                         "Restrict access by source-IP whitelist or require VPN. "
                         "Ensure strong authentication (MFA) is enforced on all admin routes."
                     ),
-                    "payload": json.dumps(
+                    payload=json.dumps(
                         {
                             "check": "admin_panel",
                             "probe_url": probe_url,
                         }
                     ),
-                }
+                    **standards,
+                )
             )
 
         return findings
 
     # ─── check 6: test / debug files ──────────────────────────────────────
 
-    async def _check_test_files(self, origin: str) -> List[Dict]:
+    async def _check_test_files(self, origin: str) -> List[Finding]:
         """
         Probe well-known test, debug, and framework-introspection paths.
 
         Same 200 + > 50 bytes threshold as admin panels.
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
 
         for path, severity, description in payloads.security_misconfig_test_files:
             probe_url = f"{origin}/{path}"
@@ -517,41 +538,43 @@ class SecurityMisconfigScanner(BaseScanner):
             if resp_status != 200 or len(resp_body) <= 50:
                 continue
 
+            standards = get_standards("Security Misconfiguration")
             findings.append(
-                {
-                    "type": "Security Misconfiguration",
-                    "endpoint": probe_url,
-                    "severity": severity,
-                    "description": f"Test or debug file is accessible in production: {path} — {description}.",
-                    "evidence": (
+                Finding(
+                    type="Security Misconfiguration",
+                    endpoint=probe_url,
+                    severity=Severity.from_str(severity),
+                    description=f"Test or debug file is accessible in production: {path} — {description}.",
+                    evidence=(
                         f"GET {probe_url} returned status 200 with {len(resp_body)} bytes of content."
                     ),
-                    "remediation": (
+                    remediation=(
                         f"Remove {path} from the production environment. Add test and debug "
                         f"paths to your deployment exclude list. Set up CI/CD pipeline checks "
                         f"that fail if any known-dangerous file is present in the build artefact."
                     ),
-                    "payload": json.dumps(
+                    payload=json.dumps(
                         {
                             "check": "test_file",
                             "probe_url": probe_url,
                         }
                     ),
-                }
+                    **standards,
+                )
             )
 
         return findings
 
     # ─── check 7: exposed API documentation ───────────────────────────────
 
-    async def _check_api_docs(self, origin: str) -> List[Dict]:
+    async def _check_api_docs(self, origin: str) -> List[Finding]:
         """
         Probe well-known API-documentation and introspection paths.
 
         Exposed API docs in production hand attackers a complete blueprint
         of every endpoint, parameter type, and data structure.
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
 
         for path, severity, description in payloads.security_misconfig_api_docs:
             probe_url = f"{origin}/{path}"
@@ -563,27 +586,29 @@ class SecurityMisconfigScanner(BaseScanner):
             if resp_status != 200 or len(resp_body) <= 50:
                 continue
 
+            standards = get_standards("Security Misconfiguration")
             findings.append(
-                {
-                    "type": "Security Misconfiguration",
-                    "endpoint": probe_url,
-                    "severity": severity,
-                    "description": f"API documentation is exposed: {path} — {description}.",
-                    "evidence": (
+                Finding(
+                    type="Security Misconfiguration",
+                    endpoint=probe_url,
+                    severity=Severity.from_str(severity),
+                    description=f"API documentation is exposed: {path} — {description}.",
+                    evidence=(
                         f"GET {probe_url} returned status 200 with {len(resp_body)} bytes of content."
                     ),
-                    "remediation": (
+                    remediation=(
                         f"Disable or restrict access to {path} in production. If API docs are "
                         f"needed by internal teams, serve them only on an internal network "
                         f"segment or behind authentication."
                     ),
-                    "payload": json.dumps(
+                    payload=json.dumps(
                         {
                             "check": "api_docs",
                             "probe_url": probe_url,
                         }
                     ),
-                }
+                    **standards,
+                )
             )
 
         return findings
@@ -598,13 +623,10 @@ class SecurityMisconfigScanner(BaseScanner):
         Returns None on network failure.
         """
         try:
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=self.timeout
-            ) as session:
-                async with session.get(url) as response:
-                    body = await self._safe_read(response)
-                    headers = dict(response.headers)
-                    return (response.status, headers, body)
+            async with self.session.get(url) as response:
+                body = await self._safe_read(response)
+                headers = dict(response.headers)
+                return (response.status, headers, body)
 
         except (aiohttp.ClientError, TimeoutError) as e:
             error_handler.handle_error(
@@ -622,12 +644,9 @@ class SecurityMisconfigScanner(BaseScanner):
         all consistent.  Returns None on network error.
         """
         try:
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=self.timeout
-            ) as session:
-                async with session.get(url) as response:
-                    body = await self._safe_read(response)
-                    return (response.status, body)
+            async with self.session.get(url) as response:
+                body = await self._safe_read(response)
+                return (response.status, body)
 
         except (aiohttp.ClientError, TimeoutError) as e:
             error_handler.handle_error(

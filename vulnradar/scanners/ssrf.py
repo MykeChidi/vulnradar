@@ -4,8 +4,9 @@ import asyncio
 from typing import Dict, List, Optional
 from urllib.parse import quote, urlparse
 
-import aiohttp
-
+from ..models.finding import Finding
+from ..models.severity import Severity
+from ..models.standards import get_standards
 from ..utils.error_handler import (
     ScanError,
     get_global_error_handler,
@@ -39,7 +40,7 @@ class SSRFScanner(BaseScanner):
         user_message="SSRF scan encountered an error",
         return_on_error=[],
     )
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Scan a URL for SSRF vulnerabilities.
 
@@ -47,9 +48,9 @@ class SSRFScanner(BaseScanner):
             url: URL to scan
 
         Returns:
-            List[Dict]: List of SSRF vulnerability findings
+            List[Finding]: List of SSRF vulnerability findings
         """
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
 
         try:
             # Test URL parameters
@@ -81,7 +82,7 @@ class SSRFScanner(BaseScanner):
 
     async def _test_ssrf_parameter(
         self, url: str, param_name: str, original_value: str
-    ) -> List[Dict]:
+    ) -> List[Finding]:
         """
         Test a URL parameter for SSRF vulnerability.
 
@@ -129,7 +130,7 @@ class SSRFScanner(BaseScanner):
 
         return vulnerabilities
 
-    async def _test_ssrf_form(self, url: str, form: Dict) -> List[Dict]:
+    async def _test_ssrf_form(self, url: str, form: Dict) -> List[Finding]:
         """
         Test form inputs for SSRF vulnerability.
 
@@ -138,7 +139,7 @@ class SSRFScanner(BaseScanner):
             form: Form information dictionary
 
         Returns:
-            List[Dict]: List of SSRF vulnerabilities found
+            List[Finding]: List of SSRF vulnerabilities found
         """
         vulnerabilities = []
 
@@ -184,7 +185,7 @@ class SSRFScanner(BaseScanner):
 
     async def _test_ssrf_payload(
         self, test_url: str, payload: str, param_name: str, injection_type: str
-    ) -> Optional[Dict]:
+    ) -> Optional[Finding]:
         """
         Test a specific SSRF payload.
 
@@ -195,97 +196,92 @@ class SSRFScanner(BaseScanner):
             injection_type: Type of injection (parameter or form)
 
         Returns:
-            Dict: Vulnerability information if found, None otherwise
+            Optional[Finding]: Vulnerability information if found, None otherwise
         """
         try:
-            # determine base timeout seconds
-            if isinstance(self.timeout, aiohttp.ClientTimeout):
-                base = self.timeout.total or 0
-            else:
-                base = self.timeout
-            timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=timeout_obj
-            ) as session:
-                async with session.get(test_url) as response:
-                    response_text = await self._safe_read(response)
+            async with self.session.get(test_url) as response:
+                response_text = await self._safe_read(response)
 
-                    # Check for SSRF indicators in response
-                    for indicator in self.indicators:
-                        if indicator in response_text:
-                            return {
-                                "type": "SSRF",
-                                "severity": "High",
-                                "endpoint": test_url,
-                                "description": f"Server-Side Request Forgery via {injection_type} '{param_name}'",
-                                "evidence": f"Response contains indicator: '{indicator}' when testing payload: {payload}",  # noqa
-                                "payload": payload,
-                                "remediation": "Implement proper URL validation and restrict internal network access",
-                                "confidence": "High",
-                            }
+                # Check for SSRF indicators in response
+                for indicator in self.indicators:
+                    if indicator in response_text:
+                        standards = get_standards("SSRF")
+                        return Finding(
+                            type="SSRF",
+                            severity=Severity.HIGH,
+                            endpoint=test_url,
+                            description=f"Server-Side Request Forgery via {injection_type} '{param_name}'",
+                            evidence=f"Response contains indicator: '{indicator}' when testing payload: {payload}",
+                            payload=payload,
+                            remediation="Implement proper URL validation and restrict internal network access",
+                            **standards,
+                        )
 
-                    # Check for timing-based indicators (unusual response times)
-                    if response.status == 200 and len(response_text) > 0:
-                        # Check for specific cloud metadata patterns
-                        if "169.254.169.254" in payload:
-                            if any(
-                                keyword in response_text.lower()
-                                for keyword in [
-                                    "ami-",
-                                    "instance",
-                                    "metadata",
-                                    "security-group",
-                                    "iam",
-                                ]
-                            ):
-                                return {
-                                    "type": "SSRF",
-                                    "severity": "Critical",
-                                    "endpoint": test_url,
-                                    "description": f"Cloud metadata access via SSRF in {injection_type} '{param_name}'",
-                                    "evidence": f"Successfully accessed cloud metadata service with payload: {payload}",
-                                    "payload": payload,
-                                    "remediation": "Block access to cloud metadata services and implement strict URL validation",  # noqa
-                                    "confidence": "High",
-                                }
+                # Check for timing-based indicators (unusual response times)
+                if response.status == 200 and len(response_text) > 0:
+                    # Check for specific cloud metadata patterns
+                    if "169.254.169.254" in payload:
+                        if any(
+                            keyword in response_text.lower()
+                            for keyword in [
+                                "ami-",
+                                "instance",
+                                "metadata",
+                                "security-group",
+                                "iam",
+                            ]
+                        ):
+                            standards = get_standards("SSRF")
+                            return Finding(
+                                type="SSRF",
+                                severity=Severity.CRITICAL,
+                                endpoint=test_url,
+                                description=f"Cloud metadata access via SSRF in {injection_type} '{param_name}'",
+                                evidence=f"Successfully accessed cloud metadata service with payload: {payload}",
+                                payload=payload,
+                                remediation="Block access to cloud metadata services and implement strict URL validation",  # noqa
+                                **standards,
+                            )
 
-                        # Check for internal service responses
-                        if "127.0.0.1" in payload or "localhost" in payload:
-                            if any(
-                                keyword in response_text.lower()
-                                for keyword in [
-                                    "server",
-                                    "apache",
-                                    "nginx",
-                                    "iis",
-                                    "tomcat",
-                                    "jetty",
-                                ]
-                            ):
-                                return {
-                                    "type": "SSRF",
-                                    "severity": "High",
-                                    "endpoint": test_url,
-                                    "description": f"Internal service access via SSRF in {injection_type} '{param_name}'",  # noqa
-                                    "evidence": f"Successfully accessed internal service with payload: {payload}",
-                                    "payload": payload,
-                                    "remediation": "Implement network-level restrictions and proper URL validation",
-                                    "confidence": "Medium",
-                                }
+                    # Check for internal service responses
+                    if "127.0.0.1" in payload or "localhost" in payload:
+                        if any(
+                            keyword in response_text.lower()
+                            for keyword in [
+                                "server",
+                                "apache",
+                                "nginx",
+                                "iis",
+                                "tomcat",
+                                "jetty",
+                            ]
+                        ):
+                            standards = get_standards("SSRF")
+                            return Finding(
+                                type="SSRF",
+                                severity=Severity.HIGH,
+                                endpoint=test_url,
+                                description=f"Internal service access via SSRF in {injection_type} '{param_name}'",
+                                evidence=f"Successfully accessed internal service with payload: {payload}",
+                                payload=payload,
+                                remediation="Implement network-level restrictions and proper URL validation",
+                                **standards,
+                            )
 
         except asyncio.TimeoutError:
             # Timeout might indicate successful connection to internal service
             if "127.0.0.1" in payload or "localhost" in payload:
-                return {
-                    "type": "SSRF",
-                    "severity": "Medium",
-                    "endpoint": test_url,
-                    "description": f"Potential SSRF via timeout behavior in {injection_type} '{param_name}'",
-                    "evidence": f"Request timed out when testing payload: {payload} (may indicate internal service access)",  # noqa
-                    "payload": payload,
-                    "remediation": "Implement proper URL validation and timeout handling",
-                    "confidence": "Low",
-                }
+                standards = get_standards("SSRF")
+                return Finding(
+                    type="SSRF",
+                    severity=Severity.MEDIUM,
+                    endpoint=test_url,
+                    description=f"Potential SSRF via timeout behavior in {injection_type} '{param_name}'",
+                    evidence=f"Request timed out when testing payload: {payload} (may indicate internal service access)",  # noqa
+                    payload=payload,
+                    remediation="Implement proper URL validation and timeout handling",
+                    **standards,
+                )
         except Exception as e:
             # Some exceptions might indicate successful internal access
             error_msg = str(e).lower()
@@ -297,16 +293,17 @@ class SSRFScanner(BaseScanner):
                     "network unreachable",
                 ]
             ):
-                return {
-                    "type": "SSRF",
-                    "severity": "Medium",
-                    "endpoint": test_url,
-                    "description": f"Potential SSRF via error response in {injection_type} '{param_name}'",
-                    "evidence": f"Error response indicates potential internal network access: {error_handler._sanitize_message(str(e))}",  # noqa
-                    "payload": payload,
-                    "remediation": "Implement proper error handling and URL validation",
-                    "confidence": "Low",
-                }
+                standards = get_standards("SSRF")
+                return Finding(
+                    type="SSRF",
+                    severity=Severity.MEDIUM,
+                    endpoint=test_url,
+                    description=f"Potential SSRF via error response in {injection_type} '{param_name}'",
+                    evidence=f"Error response indicates potential internal network access: {error_handler._sanitize_message(str(e))}",  # noqa
+                    payload=payload,
+                    remediation="Implement proper error handling and URL validation",
+                    **standards,
+                )
 
         return None
 
@@ -317,7 +314,7 @@ class SSRFScanner(BaseScanner):
         form_data: Dict,
         payload: str,
         input_name: str,
-    ) -> Optional[Dict]:
+    ) -> Optional[Finding]:
         """
         Test SSRF payload via form submission.
 
@@ -329,57 +326,51 @@ class SSRFScanner(BaseScanner):
             input_name: Input field name being tested
 
         Returns:
-            Dict: Vulnerability information if found, None otherwise
+            Optional[Finding]: Vulnerability information if found, None otherwise
         """
         try:
-            if isinstance(self.timeout, aiohttp.ClientTimeout):
-                base = self.timeout.total or 0
+            if method.lower() == "post":
+                async with self.session.post(action_url, data=form_data) as response:
+                    response_text = await self._safe_read(response)
+
+                    # Check for SSRF indicators
+                    for indicator in self.indicators:
+                        if indicator in response_text:
+                            standards = get_standards("SSRF")
+                            return Finding(
+                                type="SSRF",
+                                severity=Severity.HIGH,
+                                endpoint=action_url,
+                                description=f"Server-Side Request Forgery via form input '{input_name}'",
+                                evidence=f"Response contains indicator: '{indicator}' when testing payload: {payload}",
+                                payload=payload,
+                                remediation="Implement proper URL validation and restrict internal network access",
+                                **standards,
+                            )
             else:
-                base = self.timeout
-            timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=timeout_obj
-            ) as session:
-                if method.lower() == "post":
-                    async with session.post(action_url, data=form_data) as response:
-                        response_text = await self._safe_read(response)
+                # Handle GET method
+                query_string = "&".join(
+                    [f"{k}={quote(str(v))}" for k, v in form_data.items()]
+                )
+                test_url = f"{action_url}?{query_string}"
 
-                        # Check for SSRF indicators
-                        for indicator in self.indicators:
-                            if indicator in response_text:
-                                return {
-                                    "type": "SSRF",
-                                    "severity": "High",
-                                    "endpoint": action_url,
-                                    "description": f"Server-Side Request Forgery via form input '{input_name}'",
-                                    "evidence": f"Response contains indicator: '{indicator}' when testing payload: {payload}",  # noqa
-                                    "payload": payload,
-                                    "remediation": "Implement proper URL validation and restrict internal network access",  # noqa
-                                    "confidence": "High",
-                                }
-                else:
-                    # Handle GET method
-                    query_string = "&".join(
-                        [f"{k}={quote(str(v))}" for k, v in form_data.items()]
-                    )
-                    test_url = f"{action_url}?{query_string}"
-
-                    return await self._test_ssrf_payload(
-                        test_url, payload, input_name, "form"
-                    )
+                return await self._test_ssrf_payload(
+                    test_url, payload, input_name, "form"
+                )
 
         except asyncio.TimeoutError:
             if "127.0.0.1" in payload or "localhost" in payload:
-                return {
-                    "type": "SSRF",
-                    "severity": "Medium",
-                    "endpoint": action_url,
-                    "description": f"Potential SSRF via timeout behavior in form input '{input_name}'",
-                    "evidence": f"Request timed out when testing payload: {payload}",
-                    "payload": payload,
-                    "remediation": "Implement proper URL validation and timeout handling",
-                    "confidence": "Low",
-                }
+                standards = get_standards("SSRF")
+                return Finding(
+                    type="SSRF",
+                    severity=Severity.MEDIUM,
+                    endpoint=action_url,
+                    description=f"Potential SSRF via timeout behavior in form input '{input_name}'",
+                    evidence=f"Request timed out when testing payload: {payload}",
+                    payload=payload,
+                    remediation="Implement proper URL validation and timeout handling",
+                    **standards,
+                )
         except Exception as e:
             error_msg = str(e).lower()
             if any(
@@ -390,16 +381,17 @@ class SSRFScanner(BaseScanner):
                     "network unreachable",
                 ]
             ):
-                return {
-                    "type": "SSRF",
-                    "severity": "Medium",
-                    "endpoint": action_url,
-                    "description": f"Potential SSRF via error response in form input '{input_name}'",
-                    "evidence": f"Error response indicates potential internal network access: {error_handler._sanitize_message(str(e))}",  # noqa
-                    "payload": payload,
-                    "remediation": "Implement proper error handling and URL validation",
-                    "confidence": "Low",
-                }
+                standards = get_standards("SSRF")
+                return Finding(
+                    type="SSRF",
+                    severity=Severity.MEDIUM,
+                    endpoint=action_url,
+                    description=f"Potential SSRF via error response in form input '{input_name}'",
+                    evidence=f"Error response indicates potential internal network access: {error_handler._sanitize_message(str(e))}",  # noqa
+                    payload=payload,
+                    remediation="Implement proper error handling and URL validation",
+                    **standards,
+                )
 
         return None
 
@@ -422,48 +414,40 @@ class SSRFScanner(BaseScanner):
         """
         try:
             # Re-test the specific payload
-            if isinstance(self.timeout, aiohttp.ClientTimeout):
-                base = self.timeout.total
-            else:
-                base = self.timeout
-            timeout = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=timeout
-            ) as session:
-                async with session.get(url) as response:
-                    response_text = await self._safe_read(response)
+            async with self.session.get(url) as response:
+                response_text = await self._safe_read(response)
 
-                    # Check if the same indicators are still present
-                    for indicator in self.indicators:
-                        if indicator in evidence and indicator in response_text:
-                            return True
+                # Check if the same indicators are still present
+                for indicator in self.indicators:
+                    if indicator in evidence and indicator in response_text:
+                        return True
 
-                    # Check for cloud metadata access
-                    if "169.254.169.254" in payload:
-                        return any(
-                            keyword in response_text.lower()
-                            for keyword in [
-                                "ami-",
-                                "instance",
-                                "metadata",
-                                "security-group",
-                                "iam",
-                            ]
-                        )
+                # Check for cloud metadata access
+                if "169.254.169.254" in payload:
+                    return any(
+                        keyword in response_text.lower()
+                        for keyword in [
+                            "ami-",
+                            "instance",
+                            "metadata",
+                            "security-group",
+                            "iam",
+                        ]
+                    )
 
-                    # Check for internal service access
-                    if "127.0.0.1" in payload or "localhost" in payload:
-                        return any(
-                            keyword in response_text.lower()
-                            for keyword in [
-                                "server",
-                                "apache",
-                                "nginx",
-                                "iis",
-                                "tomcat",
-                                "jetty",
-                            ]
-                        )
+                # Check for internal service access
+                if "127.0.0.1" in payload or "localhost" in payload:
+                    return any(
+                        keyword in response_text.lower()
+                        for keyword in [
+                            "server",
+                            "apache",
+                            "nginx",
+                            "iis",
+                            "tomcat",
+                            "jetty",
+                        ]
+                    )
 
         except asyncio.TimeoutError:
             # Timeout behavior might still indicate vulnerability

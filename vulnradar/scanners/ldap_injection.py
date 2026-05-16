@@ -6,6 +6,9 @@ from urllib.parse import urlencode
 
 import aiohttp
 
+from ..models.finding import Finding
+from ..models.severity import Severity
+from ..models.standards import get_standards
 from ..utils.error_handler import NetworkError, ScanError, get_global_error_handler
 from . import payloads
 from .base import BaseScanner
@@ -60,14 +63,14 @@ class LDAPInjectionScanner(BaseScanner):
 
     # ── public: scan ──────────────────────────────────────────────────────
 
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Test a single URL for LDAP injection.
 
         Extracts forms and URL parameters, injects LDAP payloads, checks
         for error messages, auth bypass, and wildcard enumeration oracles.
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
 
         try:
             # Test 1: forms (most common injection vector for LDAP — login forms)
@@ -145,7 +148,7 @@ class LDAPInjectionScanner(BaseScanner):
 
     # ── private: form testing ─────────────────────────────────────────────
 
-    async def _test_form(self, page_url: str, form: Dict) -> List[Dict]:
+    async def _test_form(self, page_url: str, form: Dict) -> List[Finding]:
         """
         Test a single form for LDAP injection.
 
@@ -155,7 +158,7 @@ class LDAPInjectionScanner(BaseScanner):
              payloads, compare status/body to baseline
           3. Wildcard: inject wildcard payloads, compare response lengths
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
 
         action = form["action"]
         method = form["method"]  # noqa
@@ -194,37 +197,36 @@ class LDAPInjectionScanner(BaseScanner):
                 inject_status, inject_body = result
 
                 if self._has_ldap_error(inject_body):
-                    findings.append(
-                        {
-                            "type": "LDAP Injection",
-                            "endpoint": action,
-                            "severity": "High",
-                            "description": (
-                                f"Error-based LDAP injection detected in form field '{field_name}'. "
-                                f"Payload: '{payload_val}'. {why}."
-                            ),
-                            "evidence": (
-                                f"POST {action} with {field_name}='{payload_val}' returned LDAP error "
-                                f"in response body. Response status: {inject_status}. "
-                                f"LDAP error indicator found in response."
-                            ),
-                            "remediation": (
-                                "Sanitize all user input before using it in LDAP queries. Use "
-                                "parameterized LDAP queries or escape special characters "
-                                "( ) * \\ & | ! according to RFC 4515. Never concatenate user "
-                                "input directly into LDAP filter strings."
-                            ),
-                            "payload": json.dumps(
-                                {
-                                    "method": "POST",
-                                    "target_url": action,
-                                    "injection_point": field_name,
-                                    "payload_value": payload_val,
-                                    "technique": "error_based",
-                                    "form_data": baseline_data,
-                                }
-                            ),
-                        }
+                    findings.append(Finding(
+                        type="LDAP Injection",
+                        endpoint=action,
+                        severity=Severity.HIGH,
+                        description=(
+                            f"Error-based LDAP injection detected in form field '{field_name}'. "
+                            f"Payload: '{payload_val}'. {why}."
+                        ),
+                        evidence=(
+                            f"POST {action} with {field_name}='{payload_val}' returned LDAP error "
+                            f"in response body. Response status: {inject_status}. "
+                            f"LDAP error indicator found in response."
+                        ),
+                        remediation=(
+                            "Sanitize all user input before using it in LDAP queries. Use "
+                            "parameterized LDAP queries or escape special characters "
+                            "( ) * \\ & | ! according to RFC 4515. Never concatenate user "
+                            "input directly into LDAP filter strings."
+                        ),
+                        payload={
+                            "method": "POST",
+                            "target_url": action,
+                            "injection_point": field_name,
+                            "payload_value": payload_val,
+                            "technique": "error_based",
+                            "form_data": baseline_data,
+                        },
+                        method="POST",
+                        **get_standards("LDAP Injection"),
+                    )
                     )
                     break  # one finding per field is enough
 
@@ -246,41 +248,39 @@ class LDAPInjectionScanner(BaseScanner):
                     if self._indicates_auth_success(
                         inject_status, baseline_status, inject_body
                     ):
-                        findings.append(
-                            {
-                                "type": "LDAP Injection",
-                                "endpoint": action,
-                                "severity": "Critical",
-                                "description": (
-                                    f"LDAP authentication bypass detected in form field '{field_name}'. "
-                                    f"Payload: '{payload_val}'. {why}. The server accepted the login "
-                                    f"despite the injected filter manipulation."
-                                ),
-                                "evidence": (
-                                    f"POST {action} with {field_name}='{payload_val}' changed response "
-                                    f"from status {baseline_status} to {inject_status}. Response body "
-                                    f"contains auth-success indicators. This suggests the LDAP filter "
-                                    f"was rewritten to bypass authentication."
-                                ),
-                                "remediation": (
-                                    "Sanitize all authentication input before building LDAP filters. "
-                                    "Use parameterized queries or escape all LDAP meta-characters. "
-                                    "Implement server-side authorization checks independent of LDAP "
-                                    "filter results."
-                                ),
-                                "payload": json.dumps(
-                                    {
-                                        "method": "POST",
-                                        "target_url": action,
-                                        "injection_point": field_name,
-                                        "payload_value": payload_val,
-                                        "technique": "auth_bypass",
-                                        "baseline_status": baseline_status,
-                                        "form_data": baseline_data,
-                                    }
-                                ),
-                            }
-                        )
+                        findings.append(Finding(
+                            type="LDAP Injection",
+                            endpoint=action,
+                            severity=Severity.CRITICAL,
+                            description=(
+                                f"LDAP authentication bypass detected in form field '{field_name}'. "
+                                f"Payload: '{payload_val}'. {why}. The server accepted the login "
+                                f"despite the injected filter manipulation."
+                            ),
+                            evidence=(
+                                f"POST {action} with {field_name}='{payload_val}' changed response "
+                                f"from status {baseline_status} to {inject_status}. Response body "
+                                f"contains auth-success indicators. This suggests the LDAP filter "
+                                f"was rewritten to bypass authentication."
+                            ),
+                            remediation=(
+                                "Sanitize all authentication input before building LDAP filters. "
+                                "Use parameterized queries or escape all LDAP meta-characters. "
+                                "Implement server-side authorization checks independent of LDAP "
+                                "filter results."
+                            ),
+                            payload={
+                                "method": "POST",
+                                "target_url": action,
+                                "injection_point": field_name,
+                                "payload_value": payload_val,
+                                "technique": "auth_bypass",
+                                "baseline_status": baseline_status,
+                                "form_data": baseline_data,
+                            },
+                            method="POST",
+                            **get_standards("LDAP Injection"),
+                        ))
                         break  # one finding per field
 
             # Pass 3: wildcard enumeration (only if NOT a login form —
@@ -313,54 +313,52 @@ class LDAPInjectionScanner(BaseScanner):
                     inject_len = len(inject_body)
 
                     if abs(inject_len - wc_baseline_len) > _WILDCARD_LENGTH_THRESHOLD:
-                        findings.append(
-                            {
-                                "type": "LDAP Injection",
-                                "endpoint": action,
-                                "severity": "Medium",
-                                "description": (
-                                    f"LDAP wildcard enumeration detected in form field '{field_name}'. "
-                                    f"Payload: '{payload_val}'. {why}. Response length differs "
-                                    f"significantly from baseline, indicating the wildcard was "
-                                    f"evaluated by the LDAP server."
-                                ),
-                                "evidence": (
-                                    f"POST {action} with {field_name}='{payload_val}' returned "
-                                    f"{inject_len} bytes. Baseline (zzznomatch*) returned "
-                                    f"{wc_baseline_len} bytes. Difference: {abs(inject_len - wc_baseline_len)} bytes. "
-                                    f"This is a response-length oracle for LDAP attribute enumeration."
-                                ),
-                                "remediation": (
-                                    "Sanitize wildcard characters (* and \\) in LDAP filter input. "
-                                    "If wildcards are a legitimate feature, ensure the response does "
-                                    "not reveal whether a match occurred via timing or length side channels."
-                                ),
-                                "payload": json.dumps(
-                                    {
-                                        "method": "POST",
-                                        "target_url": action,
-                                        "injection_point": field_name,
-                                        "payload_value": payload_val,
-                                        "technique": "wildcard",
-                                        "baseline_length": wc_baseline_len,
-                                        "form_data": baseline_data,
-                                    }
-                                ),
-                            }
-                        )
+                        findings.append(Finding(
+                            type="LDAP Injection",
+                            endpoint=action,
+                            severity=Severity.MEDIUM,
+                            description=(
+                                f"LDAP wildcard enumeration detected in form field '{field_name}'. "
+                                f"Payload: '{payload_val}'. {why}. Response length differs "
+                                f"significantly from baseline, indicating the wildcard was "
+                                f"evaluated by the LDAP server."
+                            ),
+                            evidence=(
+                                f"POST {action} with {field_name}='{payload_val}' returned "
+                                f"{inject_len} bytes. Baseline (zzznomatch*) returned "
+                                f"{wc_baseline_len} bytes. Difference: {abs(inject_len - wc_baseline_len)} bytes. "
+                                f"This is a response-length oracle for LDAP attribute enumeration."
+                            ),
+                            remediation=(
+                                "Sanitize wildcard characters (* and \\) in LDAP filter input. "
+                                "If wildcards are a legitimate feature, ensure the response does "
+                                "not reveal whether a match occurred via timing or length side channels."
+                            ),
+                            payload={
+                                "method": "POST",
+                                "target_url": action,
+                                "injection_point": field_name,
+                                "payload_value": payload_val,
+                                "technique": "wildcard",
+                                "baseline_length": wc_baseline_len,
+                                "form_data": baseline_data,
+                            },
+                            method="POST",
+                            **get_standards("LDAP Injection"),
+                        ))
                         break  # one finding per field
 
         return findings
 
     # ── private: URL parameter testing ────────────────────────────────────
 
-    async def _test_params(self, url: str, params: Dict[str, str]) -> List[Dict]:
+    async def _test_params(self, url: str, params: Dict[str, str]) -> List[Finding]:
         """
         Test URL parameters for LDAP injection.
 
         Same three techniques as forms, but submitted via GET query strings.
         """
-        findings: List[Dict] = []
+        findings: List[Finding] = []
 
         # Baseline
         baseline_result = await self._submit_get(url, params)
@@ -385,34 +383,33 @@ class LDAPInjectionScanner(BaseScanner):
                 inject_status, inject_body = result
 
                 if self._has_ldap_error(inject_body):
-                    findings.append(
-                        {
-                            "type": "LDAP Injection",
-                            "endpoint": url,
-                            "severity": "High",
-                            "description": (
-                                f"Error-based LDAP injection detected in URL parameter '{param_name}'. "
-                                f"Payload: '{payload_val}'. {why}."
-                            ),
-                            "evidence": (
-                                f"GET {url}?{param_name}={payload_val} returned LDAP error in "
-                                f"response body. Status: {inject_status}."
-                            ),
-                            "remediation": (
-                                "Sanitize all URL parameter input before using it in LDAP queries. "
-                                "Escape LDAP special characters or use parameterized queries."
-                            ),
-                            "payload": json.dumps(
-                                {
-                                    "method": "GET",
-                                    "target_url": url,
-                                    "injection_point": param_name,
-                                    "payload_value": payload_val,
-                                    "technique": "error_based",
-                                    "params": params,
-                                }
-                            ),
-                        }
+                    findings.append(Finding(
+                        type="LDAP Injection",
+                        endpoint=url,
+                        severity=Severity.HIGH,
+                        description=(
+                            f"Error-based LDAP injection detected in URL parameter '{param_name}'. "
+                            f"Payload: '{payload_val}'. {why}."
+                        ),
+                        evidence=(
+                            f"GET {url}?{param_name}={payload_val} returned LDAP error in "
+                            f"response body. Status: {inject_status}."
+                        ),
+                        remediation=(
+                            "Sanitize all URL parameter input before using it in LDAP queries. "
+                            "Escape LDAP special characters or use parameterized queries."
+                        ),
+                        payload={
+                            "method": "GET",
+                            "target_url": url,
+                            "injection_point": param_name,
+                            "payload_value": payload_val,
+                            "technique": "error_based",
+                            "params": params,
+                        },
+                        method="GET",
+                        **get_standards("LDAP Injection"),
+                    )
                     )
                     break
 
@@ -441,36 +438,35 @@ class LDAPInjectionScanner(BaseScanner):
                 inject_len = len(inject_body)
 
                 if abs(inject_len - wc_baseline_len) > _WILDCARD_LENGTH_THRESHOLD:
-                    findings.append(
-                        {
-                            "type": "LDAP Injection",
-                            "endpoint": url,
-                            "severity": "Medium",
-                            "description": (
-                                f"LDAP wildcard enumeration detected in URL parameter '{param_name}'. "
-                                f"Payload: '{payload_val}'. {why}."
-                            ),
-                            "evidence": (
-                                f"GET {url}?{param_name}={payload_val} returned {inject_len} bytes. "
-                                f"Baseline returned {wc_baseline_len} bytes. Difference: "
-                                f"{abs(inject_len - wc_baseline_len)} bytes. Response-length oracle."
-                            ),
-                            "remediation": (
-                                "Sanitize wildcard characters in LDAP queries. Avoid leaking match "
-                                "results via response length side channels."
-                            ),
-                            "payload": json.dumps(
-                                {
-                                    "method": "GET",
-                                    "target_url": url,
-                                    "injection_point": param_name,
-                                    "payload_value": payload_val,
-                                    "technique": "wildcard",
-                                    "baseline_length": wc_baseline_len,
-                                    "params": params,
-                                }
-                            ),
-                        }
+                    findings.append(Finding(
+                        type="LDAP Injection",
+                        endpoint=url,
+                        severity=Severity.MEDIUM,
+                        description=(
+                            f"LDAP wildcard enumeration detected in URL parameter '{param_name}'. "
+                            f"Payload: '{payload_val}'. {why}."
+                        ),
+                        evidence=(
+                            f"GET {url}?{param_name}={payload_val} returned {inject_len} bytes. "
+                            f"Baseline returned {wc_baseline_len} bytes. Difference: "
+                            f"{abs(inject_len - wc_baseline_len)} bytes. Response-length oracle."
+                        ),
+                        remediation=(
+                            "Sanitize wildcard characters in LDAP queries. Avoid leaking match "
+                            "results via response length side channels."
+                        ),
+                        payload={
+                            "method": "GET",
+                            "target_url": url,
+                            "injection_point": param_name,
+                            "payload_value": payload_val,
+                            "technique": "wildcard",
+                            "baseline_length": wc_baseline_len,
+                            "params": params,
+                        },
+                        method="GET",
+                        **get_standards("LDAP Injection"),
+                    )
                     )
                     break
 
@@ -535,12 +531,9 @@ class LDAPInjectionScanner(BaseScanner):
         POST a form with the given data.  Returns (status, body) or None on error.
         """
         try:
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=self.timeout
-            ) as session:
-                async with session.post(url, data=data) as response:
-                    body = await self._safe_read(response)
-                    return (response.status, body)
+            async with self.session.post(url, data=data) as response:
+                body = await self._safe_read(response)
+                return (response.status, body)
 
         except (aiohttp.ClientError, TimeoutError) as e:
             error_handler.handle_error(
@@ -564,12 +557,9 @@ class LDAPInjectionScanner(BaseScanner):
                 f"{url}?{query_string}" if "?" not in url else f"{url}&{query_string}"
             )
 
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=self.timeout
-            ) as session:
-                async with session.get(full_url) as response:
-                    body = await self._safe_read(response)
-                    return (response.status, body)
+            async with self.session.get(full_url) as response:
+                body = await self._safe_read(response)
+                return (response.status, body)
 
         except (aiohttp.ClientError, TimeoutError) as e:
             error_handler.handle_error(

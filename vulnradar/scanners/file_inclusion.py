@@ -7,6 +7,9 @@ from typing import Dict, List, Optional
 
 import aiohttp
 
+from ..models.finding import Finding
+from ..models.severity import Severity
+from ..models.standards import get_standards
 from ..utils.error_handler import (
     ScanError,
     get_global_error_handler,
@@ -42,7 +45,7 @@ class FileInclusionScanner(BaseScanner):
         user_message="File inclusion scan encountered an error",
         return_on_error=[],
     )
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Scan a URL for file inclusion vulnerabilities.
 
@@ -50,9 +53,9 @@ class FileInclusionScanner(BaseScanner):
             url: URL to scan
 
         Returns:
-            List[Dict]: List of vulnerability findings
+            List[Finding]: List of vulnerability findings
         """
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
         try:
             # Test URL parameters
             url_vulns = await self._test_url_parameters(url)
@@ -73,9 +76,9 @@ class FileInclusionScanner(BaseScanner):
 
         return vulnerabilities
 
-    async def _test_url_parameters(self, url: str) -> List[Dict]:
+    async def _test_url_parameters(self, url: str) -> List[Finding]:
         """Test URL parameters for file inclusion vulnerabilities."""
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
 
         # Extract existing parameters
         params = await self._extract_parameters(url)
@@ -114,9 +117,9 @@ class FileInclusionScanner(BaseScanner):
 
         return vulnerabilities
 
-    async def _test_form_inputs(self, url: str) -> List[Dict]:
+    async def _test_form_inputs(self, url: str) -> List[Finding]:
         """Test form inputs for file inclusion vulnerabilities."""
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
 
         forms = await self._get_form_inputs(url)
 
@@ -138,9 +141,9 @@ class FileInclusionScanner(BaseScanner):
 
     async def _test_lfi_parameter(
         self, url: str, param_name: str, original_value: str
-    ) -> List[Dict]:
+    ) -> List[Finding]:
         """Test a URL parameter for LFI vulnerabilities."""
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
 
         for payload in self.lfi_payloads:
             try:
@@ -161,40 +164,30 @@ class FileInclusionScanner(BaseScanner):
                     )
                 )
 
-                if isinstance(self.timeout, aiohttp.ClientTimeout):
-                    base = self.timeout.total or 0
-                else:
-                    base = self.timeout
-                timeout_obj = aiohttp.ClientTimeout(
-                    total=base, connect=5, sock_read=base
-                )
-                async with aiohttp.ClientSession(
-                    headers=self.headers, timeout=timeout_obj
-                ) as session:
-                    async with session.get(test_url) as response:
-                        response_text = await self._safe_read(response)
+                async with self.session.get(test_url) as response:
+                    response_text = await self._safe_read(response)
 
-                        # Check for LFI indicators
-                        if await self._detect_lfi(response_text, payload):
-                            vulnerabilities.append(
-                                {
-                                    "type": "File Inclusion",
-                                    "subtype": "Local File Inclusion (LFI)",
-                                    "severity": "High",
-                                    "endpoint": test_url,
-                                    "parameter": param_name,
-                                    "payload": payload,
-                                    "evidence": await self._extract_evidence(
-                                        response_text
-                                    ),
-                                    "description": f"Local File Inclusion vulnerability found in parameter '{param_name}'."  # noqa
-                                    "The application includes local files based on user input without proper validation.",  # noqa
-                                    "remediation": "Implement proper input validation and sanitization. "
-                                    "Use whitelisting for allowed files. "
-                                    "Avoid direct file inclusion based on user input. "
-                                    "Consider using a secure file access API.",
-                                }
+                    # Check for LFI indicators
+                    if await self._detect_lfi(response_text, payload):
+                        standards = get_standards("File Inclusion")
+                        vulnerabilities.append(
+                            Finding(
+                                type="File Inclusion",
+                                severity=Severity.HIGH,
+                                subtype="Local File Inclusion (LFI)",
+                                endpoint=test_url,
+                                parameter=param_name,
+                                payload=payload,
+                                evidence=await self._extract_evidence(response_text),
+                                description=f"Local File Inclusion vulnerability found in parameter '{param_name}'. "
+                                "The application includes local files based on user input without proper validation.",
+                                remediation="Implement proper input validation and sanitization. "
+                                "Use whitelisting for allowed files. "
+                                "Avoid direct file inclusion based on user input. "
+                                "Consider using a secure file access API.",
+                                **standards,
                             )
+                        )
 
             except (aiohttp.ClientError, asyncio.TimeoutError):
                 continue
@@ -203,9 +196,9 @@ class FileInclusionScanner(BaseScanner):
 
     async def _test_rfi_parameter(
         self, url: str, param_name: str, original_value: str
-    ) -> List[Dict]:
+    ) -> List[Finding]:
         """Test a URL parameter for RFI vulnerabilities."""
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
 
         for payload in self.rfi_payloads:
             try:
@@ -226,39 +219,29 @@ class FileInclusionScanner(BaseScanner):
                     )
                 )
 
-                if isinstance(self.timeout, aiohttp.ClientTimeout):
-                    base = self.timeout.total or 0
-                else:
-                    base = self.timeout
-                timeout_obj = aiohttp.ClientTimeout(
-                    total=base, connect=5, sock_read=base
-                )
-                async with aiohttp.ClientSession(
-                    headers=self.headers, timeout=timeout_obj
-                ) as session:
-                    async with session.get(test_url) as response:
-                        response_text = await self._safe_read(response)
+                async with self.session.get(test_url) as response:
+                    response_text = await self._safe_read(response)
 
-                        # Check for RFI indicators
-                        if await self._detect_rfi(response_text, payload):
-                            vulnerabilities.append(
-                                {
-                                    "type": "File Inclusion",
-                                    "subtype": "Remote File Inclusion (RFI)",
-                                    "severity": "Critical",
-                                    "endpoint": test_url,
-                                    "parameter": param_name,
-                                    "payload": payload,
-                                    "evidence": await self._extract_evidence(
-                                        response_text
-                                    ),
-                                    "description": f"Remote File Inclusion vulnerability found in parameter '{param_name}'."  # noqa
-                                    "The application includes remote files based on user input, allowing potential code execution.",  # noqa
-                                    "remediation": "Disable remote file inclusion in configuration. "
-                                    "Implement strict input validation and whitelisting. "
-                                    "Never include files based on user input without proper validation.",
-                                }
+                    # Check for RFI indicators
+                    if await self._detect_rfi(response_text, payload):
+                        standards = get_standards("File Inclusion")
+                        vulnerabilities.append(
+                            Finding(
+                                type="File Inclusion",
+                                severity=Severity.CRITICAL,
+                                subtype="Remote File Inclusion (RFI)",
+                                endpoint=test_url,
+                                parameter=param_name,
+                                payload=payload,
+                                evidence=await self._extract_evidence(response_text),
+                                description=f"Remote File Inclusion vulnerability found in parameter '{param_name}'. "
+                                "The application includes remote files based on user input, allowing potential code execution.",  # noqa
+                                remediation="Disable remote file inclusion in configuration. "
+                                "Implement strict input validation and whitelisting. "
+                                "Never include files based on user input without proper validation.",
+                                **standards,
                             )
+                        )
 
             except (aiohttp.ClientError, asyncio.TimeoutError):
                 continue
@@ -267,9 +250,9 @@ class FileInclusionScanner(BaseScanner):
 
     async def _test_lfi_form(
         self, url: str, form: Dict, input_field: Dict
-    ) -> List[Dict]:
+    ) -> List[Finding]:
         """Test a form input for LFI vulnerabilities."""
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
 
         for payload in self.lfi_payloads:
             try:
@@ -282,45 +265,37 @@ class FileInclusionScanner(BaseScanner):
                         form_data[field["name"]] = field["value"] or "test"
 
                 # Submit form
-                if isinstance(self.timeout, aiohttp.ClientTimeout):
-                    base = self.timeout.total or 0
+                if form["method"] == "post":
+                    async with self.session.post(
+                        form["action"], data=form_data
+                    ) as response:
+                        response_text = await self._safe_read(response)
                 else:
-                    base = self.timeout
-                timeout_obj = aiohttp.ClientTimeout(
-                    total=base, connect=5, sock_read=base
-                )
-                async with aiohttp.ClientSession(
-                    headers=self.headers, timeout=timeout_obj
-                ) as session:
-                    if form["method"] == "post":
-                        async with session.post(
-                            form["action"], data=form_data
-                        ) as response:
-                            response_text = await self._safe_read(response)
-                    else:
-                        async with session.get(
-                            form["action"], params=form_data
-                        ) as response:
-                            response_text = await self._safe_read(response)
+                    async with self.session.get(
+                        form["action"], params=form_data
+                    ) as response:
+                        response_text = await self._safe_read(response)
 
-                    # Check for LFI indicators
-                    if await self._detect_lfi(response_text, payload):
-                        vulnerabilities.append(
-                            {
-                                "type": "File Inclusion",
-                                "subtype": "Local File Inclusion (LFI)",
-                                "severity": "High",
-                                "endpoint": form["action"],
-                                "parameter": input_field["name"],
-                                "payload": payload,
-                                "evidence": await self._extract_evidence(response_text),
-                                "description": f"Local File Inclusion vulnerability found in form field '{input_field['name']}'."  # noqa
-                                "The application includes local files based on user input without proper validation.",
-                                "remediation": "Implement proper input validation and sanitization. "
-                                "Use whitelisting for allowed files. "
-                                "Avoid direct file inclusion based on user input.",
-                            }
+                # Check for LFI indicators
+                if await self._detect_lfi(response_text, payload):
+                    standards = get_standards("File Inclusion")
+                    vulnerabilities.append(
+                        Finding(
+                            type="File Inclusion",
+                            severity=Severity.HIGH,
+                            subtype="Local File Inclusion (LFI)",
+                            endpoint=form["action"],
+                            parameter=input_field["name"],
+                            payload=payload,
+                            evidence=await self._extract_evidence(response_text),
+                            description=f"Local File Inclusion vulnerability found in form field '{input_field['name']}'. "  # noqa
+                            "The application includes local files based on user input without proper validation.",
+                            remediation="Implement proper input validation and sanitization. "
+                            "Use whitelisting for allowed files. "
+                            "Avoid direct file inclusion based on user input.",
+                            **standards,
                         )
+                    )
 
             except (aiohttp.ClientError, asyncio.TimeoutError):
                 continue
@@ -329,9 +304,9 @@ class FileInclusionScanner(BaseScanner):
 
     async def _test_rfi_form(
         self, url: str, form: Dict, input_field: Dict
-    ) -> List[Dict]:
+    ) -> List[Finding]:
         """Test a form input for RFI vulnerabilities."""
-        vulnerabilities = []
+        vulnerabilities: List[Finding] = []
 
         for payload in self.rfi_payloads:
             try:
@@ -344,45 +319,37 @@ class FileInclusionScanner(BaseScanner):
                         form_data[field["name"]] = field["value"] or "test"
 
                 # Submit form
-                if isinstance(self.timeout, aiohttp.ClientTimeout):
-                    base = self.timeout.total or 0
+                if form["method"] == "post":
+                    async with self.session.post(
+                        form["action"], data=form_data
+                    ) as response:
+                        response_text = await self._safe_read(response)
                 else:
-                    base = self.timeout
-                timeout_obj = aiohttp.ClientTimeout(
-                    total=base, connect=5, sock_read=base
-                )
-                async with aiohttp.ClientSession(
-                    headers=self.headers, timeout=timeout_obj
-                ) as session:
-                    if form["method"] == "post":
-                        async with session.post(
-                            form["action"], data=form_data
-                        ) as response:
-                            response_text = await self._safe_read(response)
-                    else:
-                        async with session.get(
-                            form["action"], params=form_data
-                        ) as response:
-                            response_text = await self._safe_read(response)
+                    async with self.session.get(
+                        form["action"], params=form_data
+                    ) as response:
+                        response_text = await self._safe_read(response)
 
-                    # Check for RFI indicators
-                    if await self._detect_rfi(response_text, payload):
-                        vulnerabilities.append(
-                            {
-                                "type": "File Inclusion",
-                                "subtype": "Remote File Inclusion (RFI)",
-                                "severity": "Critical",
-                                "endpoint": form["action"],
-                                "parameter": input_field["name"],
-                                "payload": payload,
-                                "evidence": await self._extract_evidence(response_text),
-                                "description": f"Remote File Inclusion vulnerability found in form field '{input_field['name']}'."  # noqa
-                                "The application includes remote files based on user input, allowing potential code execution.",  # noqa
-                                "remediation": "Disable remote file inclusion in configuration. "
-                                "Implement strict input validation and whitelisting. "
-                                "Never include files based on user input without proper validation.",
-                            }
+                # Check for RFI indicators
+                if await self._detect_rfi(response_text, payload):
+                    standards = get_standards("File Inclusion")
+                    vulnerabilities.append(
+                        Finding(
+                            type="File Inclusion",
+                            severity=Severity.CRITICAL,
+                            subtype="Remote File Inclusion (RFI)",
+                            endpoint=form["action"],
+                            parameter=input_field["name"],
+                            payload=payload,
+                            evidence=await self._extract_evidence(response_text),
+                            description=f"Remote File Inclusion vulnerability found in form field '{input_field['name']}'. "  # noqa
+                            "The application includes remote files based on user input, allowing potential code execution.",  # noqa
+                            remediation="Disable remote file inclusion in configuration. "
+                            "Implement strict input validation and whitelisting. "
+                            "Never include files based on user input without proper validation.",
+                            **standards,
                         )
+                    )
 
             except (aiohttp.ClientError, asyncio.TimeoutError):
                 continue
@@ -496,26 +463,16 @@ class FileInclusionScanner(BaseScanner):
         """
         try:
             # Re-test the specific payload
-            if isinstance(self.timeout, aiohttp.ClientTimeout):
-                base = self.timeout.total or 0
-            else:
-                base = self.timeout
-            timeout_obj = aiohttp.ClientTimeout(total=base, connect=5, sock_read=base)
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=timeout_obj
-            ) as session:
-                async with session.get(url) as response:
-                    response_text = await self._safe_read(response)
+            async with self.session.get(url) as response:
+                response_text = await self._safe_read(response)
 
-                    # Check if we still get the same indicators
-                    if "etc/passwd" in payload:
-                        return await self._detect_lfi(response_text, payload)
-                    elif any(
-                        rfi in payload for rfi in ["http://", "https://", "ftp://"]
-                    ):
-                        return await self._detect_rfi(response_text, payload)
-                    else:
-                        return await self._detect_lfi(response_text, payload)
+                # Check if we still get the same indicators
+                if "etc/passwd" in payload:
+                    return await self._detect_lfi(response_text, payload)
+                elif any(rfi in payload for rfi in ["http://", "https://", "ftp://"]):
+                    return await self._detect_rfi(response_text, payload)
+                else:
+                    return await self._detect_lfi(response_text, payload)
 
         except (aiohttp.ClientError, asyncio.TimeoutError):
             return False

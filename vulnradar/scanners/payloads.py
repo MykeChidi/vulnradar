@@ -1042,13 +1042,18 @@ deserialization_php_probe_array = b'a:1:{s:4:"test";s:5:"probe";}'
 deserialization_php_session_cookie_names = ("PHPSESSID", "session", "sess_id")
 
 deserialization_php_serial_prefixes = (
-    b"s:", b"i:", b"d:", b"b:", b"N;", b"a:", b"O:", b"C:"
+    b"s:",
+    b"i:",
+    b"d:",
+    b"b:",
+    b"N;",
+    b"a:",
+    b"O:",
+    b"C:",
 )
 
 # Node.js/Express deserialization variables
-deserialization_nodejs_benign_object = (
-    b'{"vulnradar_probe": "test", "value": 1}'
-)
+deserialization_nodejs_benign_object = b'{"vulnradar_probe": "test", "value": 1}'
 
 deserialization_nodejs_probe_property = (
     b'{"vulnradar_nodejs_probe": "check", "_vulnradar_test": true}'

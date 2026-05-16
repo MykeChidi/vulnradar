@@ -159,27 +159,24 @@ class ContextualScanner(BaseScanner):
         If the body is a JSON array, inspects the first element.
         """
         try:
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=self.timeout
-            ) as session:
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        return None
-
-                    content_type = response.headers.get("Content-Type", "")
-                    if "application/json" not in content_type:
-                        return None
-
-                    body = await response.json(content_type=None)
-
-                    # If the body is a list, inspect the first element
-                    if isinstance(body, list):
-                        body = body[0] if body else None
-
-                    if isinstance(body, dict):
-                        return list(body.keys())
-
+            async with self.session.get(url) as response:
+                if response.status != 200:
                     return None
+
+                content_type = response.headers.get("Content-Type", "")
+                if "application/json" not in content_type:
+                    return None
+
+                body = await response.json(content_type=None)
+
+                # If the body is a list, inspect the first element
+                if isinstance(body, list):
+                    body = body[0] if body else None
+
+                if isinstance(body, dict):
+                    return list(body.keys())
+
+                return None
 
         except (aiohttp.ClientError, TimeoutError) as e:
             error_handler.handle_error(
@@ -208,20 +205,18 @@ class ContextualScanner(BaseScanner):
         """
         methods: List[str] = []
         try:
-            async with aiohttp.ClientSession(
-                headers=self.headers, timeout=self.timeout
-            ) as session:
-                # Attempt OPTIONS first
-                async with session.options(url) as resp:
-                    allow = resp.headers.get("Allow", "")
-                    if allow:
-                        return [m.strip() for m in allow.split(",") if m.strip()]
+            session = self.session
+            # Attempt OPTIONS first
+            async with session.options(url) as resp:
+                allow = resp.headers.get("Allow", "")
+                if allow:
+                    return [m.strip() for m in allow.split(",") if m.strip()]
 
-                # OPTIONS didn't help — probe individually
-                for method in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
-                    async with session.request(method, url) as resp:
-                        if resp.status != 405:
-                            methods.append(method)
+            # OPTIONS didn't help — probe individually
+            for method in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
+                async with session.request(method, url) as resp:
+                    if resp.status != 405:
+                        methods.append(method)
 
         except (aiohttp.ClientError, TimeoutError) as e:
             error_handler.handle_error(

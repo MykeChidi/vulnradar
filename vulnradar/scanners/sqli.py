@@ -5,6 +5,9 @@ from typing import Dict, List, Optional
 
 import aiohttp
 
+from ..models.finding import Finding
+from ..models.severity import Severity
+from ..models.standards import get_standards
 from ..utils.error_handler import (
     ScanError,
     get_global_error_handler,
@@ -35,7 +38,7 @@ class SQLInjectionScanner(BaseScanner):
         user_message="SQL injection scan encountered an error",
         return_on_error=[],
     )
-    async def scan(self, url: str) -> List[Dict]:
+    async def scan(self, url: str) -> List[Finding]:
         """
         Scan a URL for SQL injection vulnerabilities.
 
@@ -43,7 +46,7 @@ class SQLInjectionScanner(BaseScanner):
             url: URL to scan
 
         Returns:
-            List[Dict]: List of SQL injection findings
+            List[Finding]: List of SQL injection findings
         """
         vulnerabilities = []
         try:
@@ -70,7 +73,9 @@ class SQLInjectionScanner(BaseScanner):
 
         return vulnerabilities
 
-    async def _check_get_params(self, url: str, params: Dict[str, str]) -> List[Dict]:
+    async def _check_get_params(
+        self, url: str, params: Dict[str, str]
+    ) -> List[Finding]:
         """
         Check GET parameters for SQL injection vulnerabilities.
 
@@ -101,40 +106,29 @@ class SQLInjectionScanner(BaseScanner):
 
                 # Make the request
                 try:
-                    if isinstance(self.timeout, aiohttp.ClientTimeout):
-                        base = self.timeout.total or 0
-                    else:
-                        base = self.timeout
-                    timeout_obj = aiohttp.ClientTimeout(
-                        total=base, connect=5, sock_read=base
-                    )
-                    async with aiohttp.ClientSession(
-                        headers=self.headers, timeout=timeout_obj
-                    ) as session:
-                        async with session.get(test_url) as response:
-                            response_text = await self._safe_read(response)
+                    async with self.session.get(test_url) as response:
+                        response_text = await self._safe_read(response)
 
-                            # Check for SQL errors in the response
-                            if self._check_for_sql_errors(response_text):
-                                vulnerabilities.append(
-                                    {
-                                        "type": "SQL Injection",
-                                        "endpoint": url,
-                                        "parameter": param_name,
-                                        "method": "GET",
-                                        "payload": payload,
-                                        "evidence": self._extract_error_snippet(
-                                            response_text
-                                        ),
-                                        "severity": "High",
-                                        "description": f"SQL Injection vulnerability found in GET parameter '{param_name}'",  # noqa
-                                        "remediation": "Use parameterized queries or prepared statements to prevent SQL injection."  # noqa
-                                        "Validate and sanitize all user inputs.",
-                                    }
+                        # Check for SQL errors in the response
+                        if self._check_for_sql_errors(response_text):
+                            vulnerabilities.append(
+                                Finding(
+                                    type="SQL Injection",
+                                    endpoint=url,
+                                    parameter=param_name,
+                                    method="GET",
+                                    payload=payload,
+                                    evidence=self._extract_error_snippet(response_text),
+                                    severity=Severity.HIGH,
+                                    description=f"SQL Injection vulnerability found in GET parameter '{param_name}'",  # noqa
+                                    remediation="Use parameterized queries or prepared statements to prevent SQL injection."  # noqa
+                                    "Validate and sanitize all user inputs.",
+                                    **get_standards("SQL Injection"),
                                 )
+                            )
 
-                                # Stop testing this parameter after finding a vulnerability
-                                break
+                            # Stop testing this parameter after finding a vulnerability
+                            break
 
                 except Exception as e:
                     error_handler.handle_error(
@@ -151,7 +145,7 @@ class SQLInjectionScanner(BaseScanner):
 
         return vulnerabilities
 
-    async def _check_post_params(self, form: Dict) -> List[Dict]:
+    async def _check_post_params(self, form: Dict) -> List[Finding]:
         """
         Check POST parameters for SQL injection vulnerabilities.
 
@@ -183,71 +177,63 @@ class SQLInjectionScanner(BaseScanner):
 
                 # Make the request
                 try:
-                    if isinstance(self.timeout, aiohttp.ClientTimeout):
-                        base = self.timeout.total or 0
+                    if form.get("method") == "post":
+                        async with self.session.post(
+                            action_url, data=form_data
+                        ) as response:
+                            response_text = await self._safe_read(response)
+
+                            # Check for SQL errors in the response
+                            if self._check_for_sql_errors(response_text):
+                                vulnerabilities.append(
+                                    Finding(
+                                        type="SQL Injection",
+                                        endpoint=action_url,
+                                        parameter=field_name,
+                                        method="POST",
+                                        payload=payload,
+                                        evidence=self._extract_error_snippet(
+                                            response_text
+                                        ),
+                                        severity=Severity.HIGH,
+                                        description=f"SQL Injection vulnerability found in POST parameter '{field_name}'",  # noqa
+                                        remediation="Use parameterized queries or prepared statements to prevent SQL injection."  # noqa
+                                        "Validate and sanitize all user inputs.",
+                                        **get_standards("SQL Injection"),
+                                    )
+                                )
+
+                                # Stop testing this parameter after finding a vulnerability
+                                break
                     else:
-                        base = self.timeout
-                    timeout_obj = aiohttp.ClientTimeout(
-                        total=base, connect=5, sock_read=base
-                    )
-                    async with aiohttp.ClientSession(
-                        headers=self.headers, timeout=timeout_obj
-                    ) as session:
-                        if form.get("method") == "post":
-                            async with session.post(
-                                action_url, data=form_data
-                            ) as response:
-                                response_text = await self._safe_read(response)
+                        # Handle GET forms
+                        async with self.session.get(
+                            action_url, params=form_data
+                        ) as response:
+                            response_text = await self._safe_read(response)
 
-                                # Check for SQL errors in the response
-                                if self._check_for_sql_errors(response_text):
-                                    vulnerabilities.append(
-                                        {
-                                            "type": "SQL Injection",
-                                            "endpoint": action_url,
-                                            "parameter": field_name,
-                                            "method": "POST",
-                                            "payload": payload,
-                                            "evidence": self._extract_error_snippet(
-                                                response_text
-                                            ),
-                                            "severity": "High",
-                                            "description": f"SQL Injection vulnerability found in POST parameter '{field_name}'",  # noqa
-                                            "remediation": "Use parameterized queries or prepared statements to prevent SQL injection."  # noqa
-                                            "Validate and sanitize all user inputs.",
-                                        }
+                            # Check for SQL errors in the response
+                            if self._check_for_sql_errors(response_text):
+                                vulnerabilities.append(
+                                    Finding(
+                                        type="SQL Injection",
+                                        endpoint=action_url,
+                                        parameter=field_name,
+                                        method="GET",
+                                        payload=payload,
+                                        evidence=self._extract_error_snippet(
+                                            response_text
+                                        ),
+                                        severity=Severity.HIGH,
+                                        description=f"SQL Injection vulnerability found in form parameter '{field_name}'",  # noqa
+                                        remediation="Use parameterized queries or prepared statements to prevent SQL injection."  # noqa
+                                        "Validate and sanitize all user inputs.",
+                                        **get_standards("SQL Injection"),
                                     )
+                                )
 
-                                    # Stop testing this parameter after finding a vulnerability
-                                    break
-                        else:
-                            # Handle GET forms
-                            async with session.get(
-                                action_url, params=form_data
-                            ) as response:
-                                response_text = await self._safe_read(response)
-
-                                # Check for SQL errors in the response
-                                if self._check_for_sql_errors(response_text):
-                                    vulnerabilities.append(
-                                        {
-                                            "type": "SQL Injection",
-                                            "endpoint": action_url,
-                                            "parameter": field_name,
-                                            "method": "GET (form)",
-                                            "payload": payload,
-                                            "evidence": self._extract_error_snippet(
-                                                response_text
-                                            ),
-                                            "severity": "High",
-                                            "description": f"SQL Injection vulnerability found in form parameter '{field_name}'",  # noqa
-                                            "remediation": "Use parameterized queries or prepared statements to prevent SQL injection."  # noqa
-                                            "Validate and sanitize all user inputs.",
-                                        }
-                                    )
-
-                                    # Stop testing this parameter after finding a vulnerability
-                                    break
+                                # Stop testing this parameter after finding a vulnerability
+                                break
 
                 except Exception as e:
                     error_handler.handle_error(

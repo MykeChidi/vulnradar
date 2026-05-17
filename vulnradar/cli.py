@@ -152,7 +152,6 @@ def parse_arguments():
     scanner_opt.add_argument(
         "--no-jwt",
         action="store_true",
-        help="Skip JWT security scanning",
         action="store_true",
         help="Skip JWT security scanning",
     )

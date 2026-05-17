@@ -34,7 +34,7 @@ class StatefulScanner(BaseScanner):
             try:
                 self.session.cookie_jar.clear()
             except Exception:
-                pass
+                pass  # nosec
 
     # ── stateful request helpers ──────────────────────────────────────────
     # These mirror BaseScanner's patterns but route through the persistent

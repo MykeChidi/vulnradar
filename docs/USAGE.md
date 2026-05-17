@@ -149,7 +149,63 @@ python -m vulnradar https://example.com --no-file-inclusion
 
 # Disable Command Injection scanning
 python -m vulnradar https://example.com --no-command-injection
+
+# Disable Broken Authentication scanning
+python -m vulnradar https://example.com --no-broken-auth
+
+# Disable IDOR scanning
+python -m vulnradar https://example.com --no-idor
+
+# Disable Security Misconfiguration scanning
+python -m vulnradar https://example.com --no-security-misconfig
+
+# Disable JWT Security scanning
+python -m vulnradar https://example.com --no-jwt
+
+# Disable CORS Misconfiguration scanning
+python -m vulnradar https://example.com --no-cors
+
+# Disable SSTI (Server-Side Template Injection) scanning
+python -m vulnradar https://example.com --no-ssti
+
+# Disable XXE (XML External Entity) scanning
+python -m vulnradar https://example.com --no-xxe
+
+# Disable NoSQL Injection scanning
+python -m vulnradar https://example.com --no-nosql
+
+# Disable LDAP Injection scanning
+python -m vulnradar https://example.com --no-ldap-injection
+
+# Disable Insecure Deserialization scanning
+python -m vulnradar https://example.com --no-deserialization
+
+# Disable Mass Assignment scanning
+python -m vulnradar https://example.com --no-mass-assignment
+
+# Disable API Security scanning
+python -m vulnradar https://example.com --no-api-security
+
+# Disable Open Redirect scanning
+python -m vulnradar https://example.com --no-open-redirect
 ```
+
+### Advanced Vulnerability Scanners
+
+VulnRadar includes 25+ specialized vulnerability scanners beyond the core OWASP Top 10:
+
+| Scanner | Flag | Description |
+|---------|------|-------------|
+| **JWT Security** | `--no-jwt` | Validates JWT tokens, detects weak algorithms, identifies data leakage |
+| **CORS Misconfiguration** | `--no-cors` | Tests origin reflection, credential handling, wildcard policies |
+| **SSTI** | `--no-ssti` | Server-Side Template Injection detection |
+| **XXE** | `--no-xxe` | XML External Entity processing and DTD attacks |
+| **NoSQL Injection** | `--no-nosql` | Document-based database injection patterns |
+| **LDAP Injection** | `--no-ldap-injection` | LDAP query manipulation detection |
+| **Deserialization** | `--no-deserialization` | Object deserialization exploit detection |
+| **Mass Assignment** | `--no-mass-assignment` | Bulk parameter injection detection |
+| **API Security** | `--no-api-security` | API endpoint analysis and permission testing |
+| **Open Redirect** | `--no-open-redirect` | Unvalidated redirect detection |
 
 ### Scan Only Specific Vulnerabilities
 
@@ -157,8 +213,14 @@ python -m vulnradar https://example.com --no-command-injection
 # Only SQL Injection and XSS
 python -m vulnradar https://example.com \
     --no-csrf --no-ssrf --no-path-traversal \
-    --no-file-inclusion --no-command-injection
-```
+    --no-file-inclusion --no-command-injection \
+    --no-jwt --no-cors --no-ssti --no-xxe
+
+# Only API and authentication vulnerabilities
+python -m vulnradar https://example.com \
+    --no-sqli --no-xss --no-csrf --no-ssrf \
+    --no-path-traversal --no-file-inclusion \
+    --api-security --jwt --broken-auth --no-cors
 
 ## Reconnaissance Options
 

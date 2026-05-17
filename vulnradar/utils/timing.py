@@ -32,7 +32,7 @@ async def measure_baseline(
         except Exception:
             # Network errors during baseline measurement are silently skipped;
             # the caller should handle the case where all samples fail.
-            pass
+            pass  # nosec
         times.append(time.monotonic() - start)
 
     if not times:

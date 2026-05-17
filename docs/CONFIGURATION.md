@@ -90,6 +90,19 @@ python -m vulnradar https://example.com \
 | `--no-path-traversal` | Disable path traversal testing |
 | `--no-file-inclusion` | Disable file inclusion testing |
 | `--no-command-injection` | Disable command injection testing |
+| `--no-broken-auth` | Disable broken authentication testing |
+| `--no-idor` | Disable IDOR testing |
+| `--no-security-misconfig` | Disable security misconfiguration testing |
+| `--no-jwt` | Disable JWT security testing |
+| `--no-cors` | Disable CORS misconfiguration testing |
+| `--no-ssti` | Disable Server-Side Template Injection testing |
+| `--no-xxe` | Disable XML External Entity testing |
+| `--no-nosql` | Disable NoSQL injection testing |
+| `--no-ldap-injection` | Disable LDAP injection testing |
+| `--no-deserialization` | Disable insecure deserialization testing |
+| `--no-mass-assignment` | Disable mass assignment testing |
+| `--no-api-security` | Disable API security testing |
+| `--no-open-redirect` | Disable open redirect testing |
 
 ### Reconnaissance Configuration
 

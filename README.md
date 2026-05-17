@@ -27,17 +27,45 @@ python -m vulnradar --gui
 
 ## Features
 
-### 🔍 Reconnaissance & Discovery
-- **DNS Enumeration** - A, MX, NS, TXT record lookups
-- **Port Scanning** - Configurable port ranges with service detection
-- **WAF Detection** - Identify Web Application Firewalls
-- **Technology Stack Detection** - Detect frameworks, servers, and libraries
-- **Advanced Recon Modules**:
-  - Network Infrastructure Analysis
-  - Security Infrastructure Analysis  
-  - Web Application Analysis
-  - Infrastructure Relationship Mapping
-  - Miscellaneous Analysis
+### 🔍 Reconnaissance & Discovery (5 Specialized Modules)
+
+#### Network Infrastructure Analysis
+- DNS enumeration (A, MX, NS, TXT, SOA records)
+- Advanced port scanning with nmap integration
+- WAF/firewall detection (wafw00f integration)
+- Load balancer detection
+- Service detection on open ports
+- OS fingerprinting
+- SSL/TLS certificate analysis
+
+#### Security Infrastructure Analysis
+- SSL/TLS configuration validation
+- Security header analysis (CSP, HSTS, X-Frame-Options, etc.)
+- DNSSEC validation
+- Email security (SPF, DKIM, DMARC records)
+- Subdomain enumeration
+- WHOIS data collection
+
+#### Web Application Analysis
+- Technology/framework detection (50+ signatures)
+- Server and library detection
+- Content discovery
+- Sitemap parsing
+- JavaScript library detection
+- Server banner extraction
+
+#### Infrastructure Relationship Mapping
+- Cross-module data correlation
+- Attack surface mapping
+- Relationship graph building
+- Cloud infrastructure detection
+
+#### Miscellaneous Analysis
+- Error code analysis and patterns
+- Cache configuration detection
+- Debug mode detection
+- Development artifacts discovery
+- Backend service identification
 
 ### 🕷️ Web Crawling
 - Intelligent crawling with configurable depth
@@ -46,28 +74,84 @@ python -m vulnradar --gui
 - Configurable page limits
 - Cookie and custom header support
 
-### 🛡️ Vulnerability Detection
-- **SQL Injection (SQLi)** - Database injection detection
-- **Cross-Site Scripting (XSS)** - Reflected and DOM-based XSS
-- **Cross-Site Request Forgery (CSRF)** - CSRF token detection
+### 🛡️ Vulnerability Detection (25+ Specialized Scanners)
+
+#### Core OWASP Top 10 Vulnerabilities
+- **SQL Injection (SQLi)** - Database injection detection with payload variation
+- **Cross-Site Scripting (XSS)** - Reflected and DOM-based XSS detection
+- **Cross-Site Request Forgery (CSRF)** - CSRF token detection and validation bypass
 - **Server-Side Request Forgery (SSRF)** - SSRF vulnerability detection
 - **Path Traversal** - Directory traversal and path-based attacks
 - **File Inclusion** - LFI and RFI detection
 - **Command Injection** - OS command injection detection
+- **Broken Authentication** - Authentication bypass and weakness detection
+- **Insecure Direct Object Reference (IDOR)** - Access control bypass detection
+- **Security Misconfiguration** - Security header and config analysis
 
-### 📊 Reporting
-- **HTML Reports** - Interactive, detailed findings
-- **PDF Reports** - Professional printable format
-- **JSON Export** - Machine-readable format for automation
-- **Excel Reports** - Spreadsheet with vulnerability details
-- **SQLite Database** - Persistent storage for scan results
+#### Advanced Vulnerability Scanners
+- **JWT Security** - JWT token validation, algorithm weakness, sensitive data leakage
+- **CORS Misconfiguration** - Origin reflection, credential handling, wildcard policy detection
+- **Server-Side Template Injection (SSTI)** - Template expression evaluation
+- **XML External Entity (XXE)** - External entity processing and DTD attacks
+- **NoSQL Injection** - Document-based database injection patterns
+- **LDAP Injection** - LDAP query manipulation detection
+- **Insecure Deserialization** - Object deserialization exploit detection
+- **Mass Assignment** - Bulk parameter injection detection
+- **API Security** - API endpoint analysis and permission testing
+- **Open Redirect** - Unvalidated redirect detection
+- **Contextual Vulnerabilities** - Context-aware, ID-based vulnerability detection
 
-### ⚙️ Performance & Configuration
-- Asynchronous scanning for speed
-- Configurable concurrency (worker threads)
-- Request timeout control
-- Caching system for result optimization
-- Database storage option
+### 📊 Multi-Format Reporting & Analysis
+- **HTML Reports** - Interactive, detailed findings with Jinja2 templates
+- **JSON Export** - Machine-readable format for automation and CI/CD integration
+- **PDF Reports** - Professional, printable format (ReportLab)
+- **Excel/CSV Export** - Spreadsheet format via pandas for data analysis
+- **Report Features**:
+  - Finding severity visualization and statistics
+  - Endpoint mapping and technology stack reporting
+  - Evidence with payload details and proof of vulnerability
+  - Remediation guidance and best practices
+  - CVSS scores, CWE mappings, and OWASP category classification
+  - Confidence scores for each finding
+
+### 💾 Persistent Storage & Advanced Caching
+
+#### Database Storage
+- **SQLite Database Integration** - Persistent vulnerability storage with sqlalchemy ORM
+- **Indexed Queries** - Fast retrieval by target, vulnerability type, severity
+- **Session Management** - Connection pooling for efficient database access
+- **Thread-Safe Access** - Concurrent scanning with safe database operations
+- **Automatic Schema Creation** - First-run initialization
+
+#### Intelligent Caching System
+- **Secure Encryption** - Fernet encryption with PBKDF2 key derivation
+- **LRU Eviction** - 1000 entry memory limit with access-based automatic eviction
+- **Entry-Level TTL** - Configurable expiration per cache entry
+- **HMAC Integrity** - Message authentication for cached data
+- **Deserialization Protection** - Max depth limits prevent attack vectors
+- **Per-Analyzer Caches** - Separate caches for network, security, and webapp recon
+- **Optional Disk Persistence** - Filesystem cache for long-term storage
+
+### ⚙️ Advanced Architecture & Performance
+
+#### Asynchronous Scanning
+- **Async/Await Throughout** - All I/O is non-blocking for maximum efficiency
+- **Shared Execution Context** - Single session per scan, shared across all scanners
+- **Concurrency Control** - `asyncio.Semaphore` for precise thread management
+- **Configurable Workers** - 1-50 concurrent threads for optimal performance tuning
+- **Connection Pooling** - Efficient resource management and QueuePool for databases
+
+#### Advanced Scanner Types
+- **Stateful Scanners** - Maintain persistent sessions for multi-step flows (login, token validation)
+- **Contextual Scanners** - Analyze URL patterns for ID-based vulnerabilities (IDOR, Mass Assignment)
+- **Registry-Driven Architecture** - Plugin system for easy scanner extension
+
+#### Performance Optimization
+- **Response Size Limits** - 5MB hard cap per response to prevent memory issues
+- **Compiled Regex Patterns** - Pre-compiled for maximum detector performance
+- **Adaptive Rate Limiting** - Automatically adjusts based on server responses
+- **Memory Management** - Cache entry size caps and LRU eviction
+- **Intelligent Payload Filtering** - Smart duplicate and invalid payload detection
 
 ### 🎯 Multi-Target Scanning
 - Scan multiple targets from a single YAML configuration file
@@ -76,9 +160,28 @@ python -m vulnradar --gui
 - Aggregated reporting across all targets
 - Individual target result files
 
-### 🖥️ User Interfaces
-- **Command-Line Interface (CLI)** - Full automation support
-- **Graphical User Interface (GUI)** - Tkinter-based GUI
+### 🖥️ User Interfaces & Utilities
+
+#### Command-Line Interface (CLI)
+- Full automation support with comprehensive options
+- YAML-based multi-target configuration
+- Environment variable support
+- Real-time output and progress reporting
+- Exit codes for CI/CD integration
+
+#### Graphical User Interface (GUI)
+- **Tkinter-Based Interface** - Modern, responsive user experience
+- **Multi-Threaded Scanning** - Non-blocking UI during scans
+- **Real-Time Output Display** - Live progress and finding updates
+- **Tabbed Results Organization** - Organized vulnerability display
+- **File Dialog Integration** - Easy result export and import
+
+#### Advanced Utilities
+- **Error Handling System** - Custom exception hierarchy with error deduplication
+- **Input Validation** - URL, cookie, header validation with RFC compliance
+- **Rate Limiting** - Adaptive rate limiter with per-endpoint tracking
+- **Structured Logging** - File and console logging with rotation
+- **Standards Mapping** - CVSS scores, CWE IDs, OWASP categories per vulnerability
 
 <div align="center">
   <img src="./assets/demo_gui.png" alt="GUI Demo" width="500"/>

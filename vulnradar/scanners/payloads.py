@@ -1483,3 +1483,55 @@ security_misconfig_verbose_error_indicators = [
     # Generic
     ("stack trace:", "Generic stack trace"),
 ]
+
+open_redirect_params = [
+    "next",
+    "redirect",
+    "redirect_to",
+    "redirect_url",
+    "redirecturl",
+    "url",
+    "goto",
+    "return",
+    "returnto",
+    "return_to",
+    "return_url",
+    "returnurl",
+    "target",
+    "dest",
+    "destination",
+    "link",
+    "location",
+    "checkout_url",
+    "continue",
+    "path",
+    "ref",
+    "q",
+]
+
+ssti_payloads = [
+    # Jinja2 / Twig
+    ("{{7*7}}", "{{3*3}}", "49", "Jinja2/Twig"),
+    ("{%- set x = 7*7 -%}{{x}}", "{%- set x = 3*3 -%}{{x}}", "49", "Jinja2"),
+    # FreeMarker
+    ("${7*7}", "${3*3}", "49", "FreeMarker"),
+    ("<#assign x=7*7>${x}", "<#assign x=3*3>${x}", "49", "FreeMarker"),
+    # Velocity
+    ("#set($x=7*7)${x}", "#set($x=3*3)${x}", "49", "Velocity"),
+    ("$x\n#set($x=7*7)\n$x", "$x\n#set($x=3*3)\n$x", "49", "Velocity"),
+    # Mako
+    ("${7*7}", "${3*3}", "49", "Mako"),
+    ("<%\nx=7*7\n%>${x}", "<%\nx=3*3\n%>${x}", "49", "Mako"),
+    # Thymeleaf
+    ("[[${7*7}]]", "[[${3*3}]]", "49", "Thymeleaf"),
+    ("[(${7*7})]", "[(${3*3})]", "49", "Thymeleaf"),
+    # Smarty
+    ("{math equation='7*7'}", "{math equation='3*3'}", "49", "Smarty"),
+    ("{$smarty.version}", "{$smarty.version}", "Smarty", "Smarty"),
+    # Pebble
+    ("{{7*7}}", "{{3*3}}", "49", "Pebble"),
+    # ERB (Ruby)
+    ("<%= 7*7 %>", "<%= 3*3 %>", "49", "ERB"),
+    # Generic expression — language-agnostic check last
+    ("a{{7*7}}b", "a{{3*3}}b", "49", "Unknown"),
+]

@@ -196,40 +196,43 @@ class XXEScanner(BaseScanner):
                 evidence_text = "Server attempted to fetch external DTD (SSRF via XXE)"
 
             if vuln_detected:
-                findings.append(Finding(
-                    type="XXE",
-                    endpoint=url,
-                    severity=Severity.from_str(severity),
-                    description=(
-                        f"XML External Entity (XXE) injection detected via {description}. "
-                        f"The XML parser processed external entities in the POST body. "
-                        f"{evidence_text}."
-                    ),
-                    evidence=(
-                        f"POST {url} with Content-Type: application/xml and XXE payload "
-                        f"returned status {status}. {evidence_text}."
-                    ),
-                    remediation=(
-                        "Disable external entity processing in your XML parser. For most parsers: "
-                        "set XMLInputFactory.SUPPORT_DTD = false, "
-                        "XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES = false. "
-                        "For Python lxml: use defusedxml. For Java: disable DOCTYPE declarations. "
-                        "Never parse untrusted XML with entity resolution enabled."
-                    ),
-                    payload={
-                        "method": "POST",
-                        "target_url": url,
-                        "xml_payload": xml_payload,
-                        "injection_point": "body",
-                        "detection_type": detection_type,
-                        "marker": (
-                            marker if detection_type in ("oob", "external_dtd") else ""
+                findings.append(
+                    Finding(
+                        type="XXE",
+                        endpoint=url,
+                        severity=Severity.from_str(severity),
+                        description=(
+                            f"XML External Entity (XXE) injection detected via {description}. "
+                            f"The XML parser processed external entities in the POST body. "
+                            f"{evidence_text}."
                         ),
-                    },
-                    method="POST",
-                    **get_standards("XXE"),
+                        evidence=(
+                            f"POST {url} with Content-Type: application/xml and XXE payload "
+                            f"returned status {status}. {evidence_text}."
+                        ),
+                        remediation=(
+                            "Disable external entity processing in your XML parser. For most parsers: "
+                            "set XMLInputFactory.SUPPORT_DTD = false, "
+                            "XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES = false. "
+                            "For Python lxml: use defusedxml. For Java: disable DOCTYPE declarations. "
+                            "Never parse untrusted XML with entity resolution enabled."
+                        ),
+                        payload={
+                            "method": "POST",
+                            "target_url": url,
+                            "xml_payload": xml_payload,
+                            "injection_point": "body",
+                            "detection_type": detection_type,
+                            "marker": (
+                                marker
+                                if detection_type in ("oob", "external_dtd")
+                                else ""
+                            ),
+                        },
+                        method="POST",
+                        **get_standards("XXE"),
+                    )
                 )
-            )
 
         return findings
 
@@ -279,33 +282,35 @@ class XXEScanner(BaseScanner):
                     evidence_text = f"Response echoes marker '{marker}'"
 
                 if vuln_detected:
-                    findings.append(Finding(
-                        type="XXE",
-                        endpoint=url,
-                        severity=Severity.from_str(severity),
-                        description=(
-                            f"XXE injection detected in URL parameter '{param_name}' via {description}. "
-                            f"{evidence_text}."
-                        ),
-                        evidence=(
-                            f"GET {url}?{param_name}=<xml> returned status {status}. {evidence_text}."
-                        ),
-                        remediation=(
-                            "Disable external entity processing in your XML parser. "
-                            "Do not parse XML from GET parameters unless absolutely necessary."
-                        ),
-                        payload={
-                            "method": "GET",
-                            "target_url": url,
-                            "xml_payload": xml_payload,
-                            "injection_point": "param",
-                            "param_name": param_name,
-                            "detection_type": detection_type,
-                            "marker": marker if detection_type == "oob" else "",
-                        },
-                        method="GET",
-                        **get_standards("XXE"),
-                    ))
+                    findings.append(
+                        Finding(
+                            type="XXE",
+                            endpoint=url,
+                            severity=Severity.from_str(severity),
+                            description=(
+                                f"XXE injection detected in URL parameter '{param_name}' via {description}. "
+                                f"{evidence_text}."
+                            ),
+                            evidence=(
+                                f"GET {url}?{param_name}=<xml> returned status {status}. {evidence_text}."
+                            ),
+                            remediation=(
+                                "Disable external entity processing in your XML parser. "
+                                "Do not parse XML from GET parameters unless absolutely necessary."
+                            ),
+                            payload={
+                                "method": "GET",
+                                "target_url": url,
+                                "xml_payload": xml_payload,
+                                "injection_point": "param",
+                                "param_name": param_name,
+                                "detection_type": detection_type,
+                                "marker": marker if detection_type == "oob" else "",
+                            },
+                            method="GET",
+                            **get_standards("XXE"),
+                        )
+                    )
                     break  # one finding per param is enough
 
             if findings:
@@ -352,35 +357,37 @@ class XXEScanner(BaseScanner):
             status, body = result
 
             if marker in body.lower():
-                findings.append(Finding(
-                    type="XXE",
-                    endpoint=action,
-                    severity=Severity.HIGH,
-                    description=(
-                        f"XXE injection detected in form field '{field_name}'. "
-                        f"Response echoes unique marker '{marker}', proving the XML was parsed "
-                        f"and external entities were resolved."
-                    ),
-                    evidence=(
-                        f"POST {action} with {field_name}=<xml> returned status {status}. "
-                        f"Response contains marker string."
-                    ),
-                    remediation=(
-                        "Disable external entity processing in your XML parser. "
-                        "Do not parse XML from form inputs unless absolutely necessary."
-                    ),
-                    payload={
-                        "method": "POST",
-                        "target_url": action,
-                        "xml_payload": xml_payload,
-                        "injection_point": "param",
-                        "param_name": field_name,
-                        "detection_type": "oob",
-                        "marker": marker,
-                    },
-                    method="POST",
-                    **get_standards("XXE"),
-                ))
+                findings.append(
+                    Finding(
+                        type="XXE",
+                        endpoint=action,
+                        severity=Severity.HIGH,
+                        description=(
+                            f"XXE injection detected in form field '{field_name}'. "
+                            f"Response echoes unique marker '{marker}', proving the XML was parsed "
+                            f"and external entities were resolved."
+                        ),
+                        evidence=(
+                            f"POST {action} with {field_name}=<xml> returned status {status}. "
+                            f"Response contains marker string."
+                        ),
+                        remediation=(
+                            "Disable external entity processing in your XML parser. "
+                            "Do not parse XML from form inputs unless absolutely necessary."
+                        ),
+                        payload={
+                            "method": "POST",
+                            "target_url": action,
+                            "xml_payload": xml_payload,
+                            "injection_point": "param",
+                            "param_name": field_name,
+                            "detection_type": "oob",
+                            "marker": marker,
+                        },
+                        method="POST",
+                        **get_standards("XXE"),
+                    )
+                )
                 break  # one finding per form is enough
 
         # Test file uploads

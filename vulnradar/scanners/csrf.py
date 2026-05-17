@@ -1,7 +1,7 @@
 ﻿# vulnradar/scanners/csrf.py - CSRF Scanner
 
 from ast import literal_eval
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import aiohttp
 

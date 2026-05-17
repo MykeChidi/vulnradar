@@ -16,6 +16,7 @@ from ..utils.error_handler import (
     get_global_error_handler,
     handle_async_errors,
 )
+from ..utils.timing import is_time_based_hit, measure_baseline
 from . import payloads
 from .base import BaseScanner
 
@@ -104,6 +105,11 @@ class CommandInjectionScanner(BaseScanner):
             ):
                 continue
 
+            try:
+                baseline = await measure_baseline(lambda: self.session.get(url))
+            except Exception:
+                baseline = 0.0
+
             for payload in self.payloads:
                 try:
                     # Create test parameters
@@ -118,17 +124,17 @@ class CommandInjectionScanner(BaseScanner):
                     test_url = f"{base_url}?{param_string}"
 
                     # Time the request for time-based detection
-                    start_time = time.time()
+                    start_time = time.monotonic()
 
                     async with self.session.get(test_url) as response:
-                        response_time = time.time() - start_time
+                        response_time = time.monotonic() - start_time
                         response_text = await self._safe_read(response)
 
                         # Check for evidence of command execution
                         evidence = self._check_evidence(response_text, payload)
 
                         if evidence or self._is_time_based_vulnerable(
-                            payload, response_time
+                            payload, response_time, baseline
                         ):
                             standards = get_standards("Command Injection")
                             vulnerability = Finding(
@@ -139,7 +145,7 @@ class CommandInjectionScanner(BaseScanner):
                                 method="GET",
                                 payload=payload,
                                 evidence=evidence
-                                or f"Time delay detected: {response_time:.2f}s",
+                                or f"Time delay detected: {response_time:.2f}s (baseline: {baseline:.2f}s)",
                                 description=f"Command injection vulnerability found in GET parameter '{param_name}'",
                                 remediation="Implement proper input validation and sanitization. "
                                 "Use parameterized queries or prepared statements. "
@@ -188,6 +194,11 @@ class CommandInjectionScanner(BaseScanner):
                 ):
                     continue
 
+                try:
+                    baseline = await measure_baseline(lambda: self.session.get(url))
+                except Exception:
+                    baseline = 0.0
+
                 for payload in self.payloads:
                     try:
                         # Build form data
@@ -200,27 +211,27 @@ class CommandInjectionScanner(BaseScanner):
                                     form_data[inp.get("name")] = inp.get("value", "")
 
                         # Time the request
-                        start_time = time.time()
+                        start_time = time.monotonic()
 
                         if method == "post":
                             async with self.session.post(
                                 action_url, data=form_data
                             ) as response:
-                                response_time = time.time() - start_time
+                                response_time = time.monotonic() - start_time
                                 response_text = await self._safe_read(response)
                         else:
                             # Handle GET forms
                             async with self.session.get(
                                 action_url, params=form_data
                             ) as response:
-                                response_time = time.time() - start_time
+                                response_time = time.monotonic() - start_time
                                 response_text = await self._safe_read(response)
 
                         # Check for evidence
                         evidence = self._check_evidence(response_text, payload)
 
                         if evidence or self._is_time_based_vulnerable(
-                            payload, response_time
+                            payload, response_time, baseline
                         ):
                             standards = get_standards("Command Injection")
                             vulnerability = Finding(
@@ -231,7 +242,7 @@ class CommandInjectionScanner(BaseScanner):
                                 method=method.upper(),
                                 payload=payload,
                                 evidence=evidence
-                                or f"Time delay detected: {response_time:.2f}s",
+                                or f"Time delay detected: {response_time:.2f}s (baseline: {baseline:.2f}s)",
                                 description=f"Command injection vulnerability found in form parameter '{input_name}'",
                                 remediation="Implement proper input validation and sanitization."
                                 "Use parameterized queries or prepared statements. "
@@ -275,6 +286,11 @@ class CommandInjectionScanner(BaseScanner):
         }
 
         for param_name, base_value in json_test_params.items():
+            try:
+                baseline = await measure_baseline(lambda: self.session.get(url))
+            except Exception:
+                baseline = 0.0
+
             for payload in self.payloads[
                 :10
             ]:  # Test fewer payloads for JSON to avoid too many requests
@@ -283,7 +299,7 @@ class CommandInjectionScanner(BaseScanner):
                     json_payload = {param_name: payload}
 
                     # Time the request
-                    start_time = time.time()
+                    start_time = time.monotonic()
 
                     headers = self.headers.copy()
                     headers["Content-Type"] = "application/json"
@@ -291,14 +307,14 @@ class CommandInjectionScanner(BaseScanner):
                     async with self.session.post(
                         url, json=json_payload, headers=headers
                     ) as response:
-                        response_time = time.time() - start_time
+                        response_time = time.monotonic() - start_time
                         response_text = await self._safe_read(response)
 
                         # Check for evidence
                         evidence = self._check_evidence(response_text, payload)
 
                         if evidence or self._is_time_based_vulnerable(
-                            payload, response_time
+                            payload, response_time, baseline
                         ):
                             standards = get_standards("Command Injection")
                             vulnerability = Finding(
@@ -309,7 +325,7 @@ class CommandInjectionScanner(BaseScanner):
                                 method="POST",
                                 payload=payload,
                                 evidence=evidence
-                                or f"Time delay detected: {response_time:.2f}s",
+                                or f"Time delay detected: {response_time:.2f}s (baseline: {baseline:.2f}s)",
                                 description=f"Command injection vulnerability found in JSON parameter '{param_name}'",
                                 remediation="Implement proper input validation and sanitization. "
                                 "Use parameterized queries or prepared statements. "
@@ -376,32 +392,49 @@ class CommandInjectionScanner(BaseScanner):
 
         return None
 
-    def _is_time_based_vulnerable(self, payload: str, response_time: float) -> bool:
+    def _is_time_based_vulnerable(
+        self, payload: str, response_time: float, baseline: float = 0.0
+    ) -> bool:
         """
         Check if response time indicates time-based command injection.
 
         Args:
             payload: Payload that was sent
             response_time: Response time in seconds
-
+            baseline: Baseline response time in seconds
         Returns:
             bool: True if time-based vulnerability is detected
         """
         # Check if payload contains sleep/delay commands
-        if (
-            "sleep" in payload.lower()
-            or "ping -n" in payload.lower()
-            or "timeout" in payload.lower()
-        ):
-            # Look for sleep duration in payload
-            sleep_match = re.search(r"sleep\s+(\d+)", payload, re.IGNORECASE)
-            if sleep_match:
-                expected_delay = int(sleep_match.group(1))
-                # Allow some tolerance for network latency
-                return response_time >= (expected_delay - 1)
+        payload_lower = payload.lower()
 
-        # General time-based detection (response took unusually long)
-        return response_time > 8.0  # Arbitrary threshold
+        # Only flag time-based if the payload actually contains a sleep/delay
+        # command.  Without this guard, any slow server response on any payload
+        # would be flagged, producing high false-positive rates.
+        time_based_keywords = ("sleep", "ping -n", "timeout")
+        if not any(kw in payload_lower for kw in time_based_keywords):
+            return False
+
+        # Extract the expected sleep duration from the payload.
+        # Matches:  sleep 5 / sleep(5) / ping -n 5 / timeout 5
+        duration_match = (
+            re.search(r"sleep[\s(]+(\d+)", payload, re.IGNORECASE)
+            or re.search(r"ping\s+-n\s+(\d+)", payload, re.IGNORECASE)
+            or re.search(r"timeout\s+(\d+)", payload, re.IGNORECASE)
+        )
+
+        if duration_match:
+            expected_sleep = float(duration_match.group(1))
+        else:
+            # Payload contains a time-based keyword but no parseable duration.
+            # Use a conservative default.
+            expected_sleep = 5.0
+
+        return is_time_based_hit(
+            response_time,
+            baseline=baseline,
+            expected_sleep=expected_sleep,
+        )
 
     @handle_async_errors(
         error_handler=error_handler,

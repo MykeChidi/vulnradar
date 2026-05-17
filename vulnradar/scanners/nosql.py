@@ -217,35 +217,36 @@ class NoSQLInjectionScanner(BaseScanner):
                         if result:
                             inject_status, inject_body = result
                             if self._has_nosql_error(inject_body):
-                                findings.append(Finding(
-                                    type="NoSQL Injection",
-                                    endpoint=action,
-                                    severity=Severity.HIGH,
-                                    description=(
-                                        f"Error-based NoSQL injection detected in form field '{field_name}'. "
-                                        f"Payload: {payload_val}. {why}."
-                                    ),
-                                    evidence=(
-                                        f"POST {action} with JSON body containing {field_name}={payload_val} "
-                                        f"returned NoSQL error in response. Status: {inject_status}."
-                                    ),
-                                    remediation=(
-                                        "Validate and sanitize all user input before using it in NoSQL queries. "
-                                        "Use parameterized queries or ODM/ORM libraries that escape operators. "
-                                        "Never pass user-controlled JSON directly to database queries."
-                                    ),
-                                    payload={
-                                        "method": "POST",
-                                        "target_url": action,
-                                        "injection_point": field_name,
-                                        "payload_value": payload_obj,
-                                        "payload_format": "json",
-                                        "technique": "error_based",
-                                        "form_data": baseline_data,
-                                    },
-                                    method="POST",
-                                    **get_standards("NoSQL Injection"),
-                                )
+                                findings.append(
+                                    Finding(
+                                        type="NoSQL Injection",
+                                        endpoint=action,
+                                        severity=Severity.HIGH,
+                                        description=(
+                                            f"Error-based NoSQL injection detected in form field '{field_name}'. "
+                                            f"Payload: {payload_val}. {why}."
+                                        ),
+                                        evidence=(
+                                            f"POST {action} with JSON body containing {field_name}={payload_val} "
+                                            f"returned NoSQL error in response. Status: {inject_status}."
+                                        ),
+                                        remediation=(
+                                            "Validate and sanitize all user input before using it in NoSQL queries. "
+                                            "Use parameterized queries or ODM/ORM libraries that escape operators. "
+                                            "Never pass user-controlled JSON directly to database queries."
+                                        ),
+                                        payload={
+                                            "method": "POST",
+                                            "target_url": action,
+                                            "injection_point": field_name,
+                                            "payload_value": payload_obj,
+                                            "payload_format": "json",
+                                            "technique": "error_based",
+                                            "form_data": baseline_data,
+                                        },
+                                        method="POST",
+                                        **get_standards("NoSQL Injection"),
+                                    )
                                 )
                                 break  # one finding per field is enough
                     except json.JSONDecodeError:
@@ -258,34 +259,36 @@ class NoSQLInjectionScanner(BaseScanner):
                 if result:
                     inject_status, inject_body = result
                     if self._has_nosql_error(inject_body):
-                        findings.append(Finding(
-                            type="NoSQL Injection",
-                            endpoint=action,
-                            severity=Severity.HIGH,
-                            description=(
-                                f"Error-based NoSQL injection detected in form field '{field_name}'. "
-                                f"Payload: {payload_val}. {why}."
-                            ),
-                            evidence=(
-                                f"POST {action} with {field_name}={payload_val} returned NoSQL error. "
-                                f"Status: {inject_status}."
-                            ),
-                            remediation=(
-                                "Validate and sanitize all user input before using it in NoSQL queries. "
-                                "Never parse JSON from form fields without validation."
-                            ),
-                            payload={
-                                "method": "POST",
-                                "target_url": action,
-                                "injection_point": field_name,
-                                "payload_value": payload_val,
-                                "payload_format": "form",
-                                "technique": "error_based",
-                                "form_data": baseline_data,
-                            },
-                            method="POST",
-                            **get_standards("NoSQL Injection"),
-                        ))
+                        findings.append(
+                            Finding(
+                                type="NoSQL Injection",
+                                endpoint=action,
+                                severity=Severity.HIGH,
+                                description=(
+                                    f"Error-based NoSQL injection detected in form field '{field_name}'. "
+                                    f"Payload: {payload_val}. {why}."
+                                ),
+                                evidence=(
+                                    f"POST {action} with {field_name}={payload_val} returned NoSQL error. "
+                                    f"Status: {inject_status}."
+                                ),
+                                remediation=(
+                                    "Validate and sanitize all user input before using it in NoSQL queries. "
+                                    "Never parse JSON from form fields without validation."
+                                ),
+                                payload={
+                                    "method": "POST",
+                                    "target_url": action,
+                                    "injection_point": field_name,
+                                    "payload_value": payload_val,
+                                    "payload_format": "form",
+                                    "technique": "error_based",
+                                    "form_data": baseline_data,
+                                },
+                                method="POST",
+                                **get_standards("NoSQL Injection"),
+                            )
+                        )
                         break
 
             if findings:
@@ -306,40 +309,41 @@ class NoSQLInjectionScanner(BaseScanner):
                             if self._indicates_auth_success(
                                 inject_status, baseline_status, inject_body
                             ):
-                                findings.append(Finding(
-                                    type="NoSQL Injection",
-                                    endpoint=action,
-                                    severity=Severity.CRITICAL,
-                                    description=(
-                                        f"NoSQL authentication bypass detected in form field '{field_name}'. "
-                                        f"Payload: {payload_val}. {why}. The server accepted the login "
-                                        f"despite the injected operator."
-                                    ),
-                                    evidence=(
-                                        f"POST {action} with JSON {field_name}={payload_val} changed response "
-                                        f"from status {baseline_status} to {inject_status}. Response contains "
-                                        f"auth-success indicators."
-                                        f"NoSQL query was rewritten to bypass authentication."
-                                    ),
-                                    remediation=(
-                                        "Sanitize all authentication input before building NoSQL queries. "
-                                        "Use parameterized queries or validate that input contains only expected "
-                                        "types (strings, not objects). Implement server-side authorization checks "
-                                        "independent of database query results."
-                                    ),
-                                    payload={
-                                        "method": "POST",
-                                        "target_url": action,
-                                        "injection_point": field_name,
-                                        "payload_value": payload_obj,
-                                        "payload_format": "json",
-                                        "technique": "auth_bypass",
-                                        "baseline_status": baseline_status,
-                                        "form_data": baseline_data,
-                                    },
-                                    method="POST",
-                                    **get_standards("NoSQL Injection"),
-                                )
+                                findings.append(
+                                    Finding(
+                                        type="NoSQL Injection",
+                                        endpoint=action,
+                                        severity=Severity.CRITICAL,
+                                        description=(
+                                            f"NoSQL authentication bypass detected in form field '{field_name}'. "
+                                            f"Payload: {payload_val}. {why}. The server accepted the login "
+                                            f"despite the injected operator."
+                                        ),
+                                        evidence=(
+                                            f"POST {action} with JSON {field_name}={payload_val} changed response "
+                                            f"from status {baseline_status} to {inject_status}. Response contains "
+                                            f"auth-success indicators."
+                                            f"NoSQL query was rewritten to bypass authentication."
+                                        ),
+                                        remediation=(
+                                            "Sanitize all authentication input before building NoSQL queries. "
+                                            "Use parameterized queries or validate that input contains only expected "
+                                            "types (strings, not objects). Implement server-side authorization checks "
+                                            "independent of database query results."
+                                        ),
+                                        payload={
+                                            "method": "POST",
+                                            "target_url": action,
+                                            "injection_point": field_name,
+                                            "payload_value": payload_obj,
+                                            "payload_format": "json",
+                                            "technique": "auth_bypass",
+                                            "baseline_status": baseline_status,
+                                            "form_data": baseline_data,
+                                        },
+                                        method="POST",
+                                        **get_standards("NoSQL Injection"),
+                                    )
                                 )
                                 break  # one finding per field
                     except json.JSONDecodeError:
@@ -378,41 +382,42 @@ class NoSQLInjectionScanner(BaseScanner):
                                     abs(inject_len - comp_baseline_len)
                                     > _COMPARISON_LENGTH_THRESHOLD
                                 ):
-                                    findings.append(Finding(
-                                        type="NoSQL Injection",
-                                        endpoint=action,
-                                        severity=Severity.MEDIUM,
-                                        description=(
-                                            f"NoSQL comparison oracle detected in form field '{field_name}'. "
-                                            f"Payload: {payload_val}. {why}. Response length differs "
-                                            f"significantly from baseline, indicating the operator was "
-                                            f"evaluated by the database."
-                                        ),
-                                        evidence=(
-                                            f"POST {action} with JSON {field_name}={payload_val} returned "
-                                            f"{inject_len} bytes. Baseline returned {comp_baseline_len} bytes. "
-                                            f"Difference: {abs(inject_len - comp_baseline_len)} bytes. "
-                                            f"Response-length oracle for NoSQL operator evaluation."
-                                        ),
-                                        remediation=(
-                                            "Validate that all input values are the expected type (string, number)"
-                                            "Reject objects and operators. "
-                                            "Avoid leaking query results via response "
-                                            "length side channels."
-                                        ),
-                                        payload={
-                                            "method": "POST",
-                                            "target_url": action,
-                                            "injection_point": field_name,
-                                            "payload_value": payload_obj,
-                                            "payload_format": "json",
-                                            "technique": "comparison",
-                                            "baseline_length": comp_baseline_len,
-                                            "form_data": baseline_data,
-                                        },
-                                        method="POST",
-                                        **get_standards("NoSQL Injection"),
-                                    )
+                                    findings.append(
+                                        Finding(
+                                            type="NoSQL Injection",
+                                            endpoint=action,
+                                            severity=Severity.MEDIUM,
+                                            description=(
+                                                f"NoSQL comparison oracle detected in form field '{field_name}'. "
+                                                f"Payload: {payload_val}. {why}. Response length differs "
+                                                f"significantly from baseline, indicating the operator was "
+                                                f"evaluated by the database."
+                                            ),
+                                            evidence=(
+                                                f"POST {action} with JSON {field_name}={payload_val} returned "
+                                                f"{inject_len} bytes. Baseline returned {comp_baseline_len} bytes. "
+                                                f"Difference: {abs(inject_len - comp_baseline_len)} bytes. "
+                                                f"Response-length oracle for NoSQL operator evaluation."
+                                            ),
+                                            remediation=(
+                                                "Validate that all input values are the expected type (string, number)"
+                                                "Reject objects and operators. "
+                                                "Avoid leaking query results via response "
+                                                "length side channels."
+                                            ),
+                                            payload={
+                                                "method": "POST",
+                                                "target_url": action,
+                                                "injection_point": field_name,
+                                                "payload_value": payload_obj,
+                                                "payload_format": "json",
+                                                "technique": "comparison",
+                                                "baseline_length": comp_baseline_len,
+                                                "form_data": baseline_data,
+                                            },
+                                            method="POST",
+                                            **get_standards("NoSQL Injection"),
+                                        )
                                     )
                                     break
                 except json.JSONDecodeError:
@@ -454,34 +459,36 @@ class NoSQLInjectionScanner(BaseScanner):
                 if result:
                     inject_status, inject_body = result
                     if self._has_nosql_error(inject_body):
-                        findings.append(Finding(
-                            type="NoSQL Injection",
-                            endpoint=url,
-                            severity=Severity.HIGH,
-                            description=(
-                                f"Error-based NoSQL injection detected in URL parameter '{param_name}'. "
-                                f"Payload: {payload_val}. {why}."
-                            ),
-                            evidence=(
-                                f"GET {url}?{param_name}={payload_val} returned NoSQL error. "
-                                f"Status: {inject_status}."
-                            ),
-                            remediation=(
-                                "Sanitize all URL parameter input before using it in NoSQL queries. "
-                                "Validate input types and reject operator objects."
-                            ),
-                            payload={
-                                "method": "GET",
-                                "target_url": url,
-                                "injection_point": param_name,
-                                "payload_value": payload_val,
-                                "payload_format": "url_param",
-                                "technique": "error_based",
-                                "params": params,
-                            },
-                            method="GET",
-                            **get_standards("NoSQL Injection"),
-                        ))
+                        findings.append(
+                            Finding(
+                                type="NoSQL Injection",
+                                endpoint=url,
+                                severity=Severity.HIGH,
+                                description=(
+                                    f"Error-based NoSQL injection detected in URL parameter '{param_name}'. "
+                                    f"Payload: {payload_val}. {why}."
+                                ),
+                                evidence=(
+                                    f"GET {url}?{param_name}={payload_val} returned NoSQL error. "
+                                    f"Status: {inject_status}."
+                                ),
+                                remediation=(
+                                    "Sanitize all URL parameter input before using it in NoSQL queries. "
+                                    "Validate input types and reject operator objects."
+                                ),
+                                payload={
+                                    "method": "GET",
+                                    "target_url": url,
+                                    "injection_point": param_name,
+                                    "payload_value": payload_val,
+                                    "payload_format": "url_param",
+                                    "technique": "error_based",
+                                    "params": params,
+                                },
+                                method="GET",
+                                **get_standards("NoSQL Injection"),
+                            )
+                        )
                         break
 
             if findings:
@@ -495,35 +502,36 @@ class NoSQLInjectionScanner(BaseScanner):
                 if result:
                     inject_status, inject_body = result
                     if self._has_nosql_error(inject_body):
-                        findings.append(Finding(
-                            type="NoSQL Injection",
-                            endpoint=url,
-                            severity=Severity.HIGH,
-                            description=(
-                                f"NoSQL injection detected in URL parameter '{param_name}' via URL-encoded "
-                                f"operator syntax. Payload: {param_name}{operator}={value}. {why}."
-                            ),
-                            evidence=(
-                                f"GET {url}?{param_name}{operator}={value} returned NoSQL error. "
-                                f"Status: {inject_status}. Framework parsed URL-encoded operator."
-                            ),
-                            remediation=(
-                                "Reject URL parameters that contain operator syntax ([$..]) unless "
-                                "explicitly whitelisted. Validate parameter names, not just values."
-                            ),
-                            payload={
-                                "method": "GET",
-                                "target_url": url,
-                                "injection_point": param_name,
-                                "payload_value": value,
-                                "payload_format": "url_operator",
-                                "operator": operator,
-                                "technique": "error_based",
-                                "params": params,
-                            },
-                            method="GET",
-                            **get_standards("NoSQL Injection"),
-                        )
+                        findings.append(
+                            Finding(
+                                type="NoSQL Injection",
+                                endpoint=url,
+                                severity=Severity.HIGH,
+                                description=(
+                                    f"NoSQL injection detected in URL parameter '{param_name}' via URL-encoded "
+                                    f"operator syntax. Payload: {param_name}{operator}={value}. {why}."
+                                ),
+                                evidence=(
+                                    f"GET {url}?{param_name}{operator}={value} returned NoSQL error. "
+                                    f"Status: {inject_status}. Framework parsed URL-encoded operator."
+                                ),
+                                remediation=(
+                                    "Reject URL parameters that contain operator syntax ([$..]) unless "
+                                    "explicitly whitelisted. Validate parameter names, not just values."
+                                ),
+                                payload={
+                                    "method": "GET",
+                                    "target_url": url,
+                                    "injection_point": param_name,
+                                    "payload_value": value,
+                                    "payload_format": "url_operator",
+                                    "operator": operator,
+                                    "technique": "error_based",
+                                    "params": params,
+                                },
+                                method="GET",
+                                **get_standards("NoSQL Injection"),
+                            )
                         )
                         break
 

@@ -149,6 +149,24 @@ def parse_arguments():
     scanner_opt.add_argument(
         "--no-nosql", action="store_true", help="Skip NoSQL injection scanning"
     )
+    scanner_opt.add_argument(
+        "--no-jwt",
+        action="store_true",
+        help="Skip JWT security scanning",
+        action="store_true",
+        help="Skip JWT security scanning",
+    )
+    scanner_opt.add_argument(
+        "--no-cors", action="store_true", help="Skip CORS misconfiguration scanning"
+    )
+    scanner_opt.add_argument(
+        "--no-ssti",
+        action="store_true",
+        help="Skip Server-Side Template Injection scanning",
+    )
+    scanner_opt.add_argument(
+        "--no-open-redirect", action="store_true", help="Skip open redirect scanning"
+    )
 
     # Recon options
     recon_opt = parser.add_argument_group(
@@ -285,7 +303,7 @@ def parse_arguments():
         action="store_true",
         default=False,
         help="Enable active cache poisoning tests (disabled by default)",
-    ),
+    )
 
     misc_recon_opt.add_argument(
         "--no-debug-mode-check",
@@ -700,6 +718,10 @@ def main():
         "scan_ldap_injection": not args.no_ldap_injection,
         "scan_xxe": not args.no_xxe,
         "scan_no_sql": not args.no_nosql,
+        "scan_open_redirect": not args.no_open_redirect,
+        "scan_ssti": not args.no_ssti,
+        "scan_cors": not args.no_cors,
+        "scan_jwt": not args.no_jwt,
         # Network analysis options
         "advanced_port_scan": not args.no_advanced_port_scan,
         "detect_waf": not args.no_waf_detect,

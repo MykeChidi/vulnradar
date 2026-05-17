@@ -9,17 +9,21 @@ from .api_security import APISecurityScanner
 from .base import BaseScanner
 from .broken_auth import BrokenAuthScanner
 from .comm_injection import CommandInjectionScanner
+from .cors import CORSScanner
 from .csrf import CSRFScanner
 from .deserialization import InsecureDeserializationScanner
 from .file_inclusion import FileInclusionScanner
 from .idor import IDORScanner
+from .jwt_scanner import JWTScanner
 from .ldap_injection import LDAPInjectionScanner
 from .mass_assignment import MassAssignmentScanner
 from .nosql import NoSQLInjectionScanner
+from .open_redirect import OpenRedirectScanner
 from .path_traversal import PathTraversalScanner
 from .security_misconfig import SecurityMisconfigScanner
 from .sqli import SQLInjectionScanner
 from .ssrf import SSRFScanner
+from .ssti import SSTIScanner
 from .xss import XSSScanner
 from .xxe import XXEScanner
 
@@ -42,6 +46,10 @@ SCANNER_REGISTRY: Dict[str, Type[BaseScanner]] = {
     "scan_ldap_injection": LDAPInjectionScanner,
     "scan_xxe": XXEScanner,
     "scan_no_sql": NoSQLInjectionScanner,
+    "scan_open_redirect": OpenRedirectScanner,
+    "scan_ssti": SSTIScanner,
+    "scan_cors": CORSScanner,
+    "scan_jwt": JWTScanner,
 }
 
 # Maps the finding "type" string → the scanner class that validates it.
@@ -67,4 +75,8 @@ FINDING_TYPE_REGISTRY: Dict[str, Type[BaseScanner]] = {
     "LDAP Injection": LDAPInjectionScanner,
     "XXE": XXEScanner,
     "NoSQL Injection": NoSQLInjectionScanner,
+    "Open Redirect": OpenRedirectScanner,
+    "SSTI": SSTIScanner,
+    "CORS Misconfiguration": CORSScanner,
+    "JWT Misconfiguration": JWTScanner,
 }
